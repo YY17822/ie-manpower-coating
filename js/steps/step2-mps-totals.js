@@ -1,17 +1,17 @@
 /*
- * 第 2 步：匯總（Dipping_Milling）
- *   第 1 步的 MPS 分成 Cutting、Dipping 兩段。每一段的最後一列下面空一列，加一列 Total，
+ * 第 2 步：匯總（Coating）
+ *   第 1 步的 MPS 分成 Plastic、Glass 兩段。每一段的最後一列下面空一列，加一列 Total，
  *   對齊各月的行；「Total」放在第一個月左邊那一行。每格都是公式。
  *
  *   每個月都只加總該月的產量（當月也不加 WIP）。
- *   以當月在 E 行、Cutting 在第 6 到 8 列為例（Total 在第 10 列）：
+ *   以當月在 E 行、Plastic 在第 6 到 8 列為例（Total 在第 10 列）：
  *
  *     D10  Total
  *     E10  =SUM(E6:E8)      當月
  *     F10  =SUM(F6:F8)      其他月份
  *
  *   Total 那一列是淺綠色底（#B5E48C）；外框粗線、裡面細格線。
- *   分段是看第 1 步寫的標題（「Cutting（…）」「Dipping（…）」）找出來的，所以上傳第 1 步匯出的檔案也可以。
+ *   分段是看第 1 步寫的標題（「Plastic（…）」「Glass（…）」）找出來的，所以上傳第 1 步匯出的檔案也可以。
  *
  *   六個月各在哪一行由使用者指定，和第 5 步（計算需求工時）共用同一組設定，
  *   在其中一步改了，另一步也會跟著變，避免兩邊對不起來。
@@ -142,7 +142,7 @@
 
     panel.appendChild(h('div', { class: 'step-head' },
       h('h1', { text: '匯總' }),
-      h('p', { text: 'Cutting 和 Dipping 各自在最後一列下面空一列，加上各月的預計總產量（Total）。每個月都只加總該月的產量（當月不加 WIP）。每格都是公式。' })));
+      h('p', { text: 'Plastic 和 Glass 各自在最後一列下面空一列，加上各月的預計總產量（Total）。每個月都只加總該月的產量（當月不加 WIP）。每格都是公式。' })));
 
     panel.appendChild(h('ol', { class: 'tasks' },
       h('li', { class: 'task' },
@@ -334,7 +334,7 @@
     var opts = { headerEnd: headerEnd, keyCol: KEY_COL, monthCols: monthCols, label: LABEL };
     var plan = XIO.planSectionTotals(work.main, opts);
     if (!plan.found) {
-      setSummary('在 ' + XIO.numToCol(KEY_COL) + ' 行找不到「Cutting（…）」「Dipping（…）」的標題。請用這一版的第 1 步篩選，或上傳這一版第 1 步匯出的檔案。', true);
+      setSummary('在 ' + XIO.numToCol(KEY_COL) + ' 行找不到「Plastic（…）」「Glass（…）」的標題。請用這一版的第 1 步篩選，或上傳這一版第 1 步匯出的檔案。', true);
       return;
     }
 

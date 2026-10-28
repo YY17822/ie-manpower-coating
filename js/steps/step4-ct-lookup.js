@@ -1,14 +1,14 @@
 /*
- * 第 4 步：帶入標準工時 CT.（Dipping_Milling）
+ * 第 4 步：帶入標準工時 CT.（Coating）
  *   拿 MPS 工作表的料號（某一行），到 P003 工作表的某一行找相同的料號，找到後用那一列算出兩個單件工時：
  *     機台 CT.   P003 的 Machine ÷ Base Qty
  *     目檢 CT.   P003 的 Labor ÷ Base Qty
  *   （P003 的 Machine、Labor 是做 Base Qty 個的工時，除過之後才是單件工時）
  *   兩行並排，放在 MPS 工作表「原本最後一行之後空一行」的位置（機台 CT. 在左、目檢 CT. 在右）。
- *   目檢 CT. 右邊再加一行「目檢-檢驗率」：使用者在畫面上輸入 Cutting、Dipping 各一個 %，
+ *   目檢 CT. 右邊再加一行「目檢-檢驗率」：使用者在畫面上輸入 Plastic、Glass 各一個 %，
  *   填到該段的每一個料號列（數值，例如 0.9 顯示成 90.0%）。第 5 步的目檢需求工時會再乘上它。
  *
- *   只填 Cutting、Dipping 兩段的料號列（第 1 步的標題、中間的空白列、第 2 步的 Total 列都跳過）。
+ *   只填 Plastic、Glass 兩段的料號列（第 1 步的標題、中間的空白列、第 2 步的 Total 列都跳過）。
  *   填入的是公式（例如 ='P003'!N5/'P003'!K5），之後在 Excel 點儲存格就能看到數值是從 P003 哪兩格算出來的。
  *   同一個料號在 P003 出現很多列時，取最上面那一列（和 VLOOKUP 一樣）。
  *   找不到的料號留空白，並標上淺紅色底。
@@ -177,7 +177,7 @@
 
     panel.appendChild(h('div', { class: 'step-head' },
       h('h1', { text: '帶入標準工時 CT.' }),
-      h('p', { text: '拿 MPS 的料號到 P003 找同一個料號，用那一列算出「機台 CT.」（Machine ÷ Base Qty）和「目檢 CT.」（Labor ÷ Base Qty），兩行並排放在 MPS 最後一行之後空一行的位置，右邊再加一行你輸入的「目檢-檢驗率」。只填 Cutting、Dipping 的料號列。CT. 填入的是公式，在 Excel 點儲存格就能看到數值是從 P003 哪兩格算出來的。' })));
+      h('p', { text: '拿 MPS 的料號到 P003 找同一個料號，用那一列算出「機台 CT.」（Machine ÷ Base Qty）和「目檢 CT.」（Labor ÷ Base Qty），兩行並排放在 MPS 最後一行之後空一行的位置，右邊再加一行你輸入的「目檢-檢驗率」。只填 Plastic、Glass 的料號列。CT. 填入的是公式，在 Excel 點儲存格就能看到數值是從 P003 哪兩格算出來的。' })));
 
     panel.appendChild(h('ol', { class: 'tasks' },
       h('li', { class: 'task' },
@@ -206,7 +206,7 @@
       h('li', { class: 'task' },
         h('h2', { text: '目檢-檢驗率' }),
         rateRows,
-        h('p', { class: 'hint', text: '輸入 90 或 90% 都代表 90%。Cutting 的檢驗率填到 Cutting 每一個料號，Dipping 的填到 Dipping 每一個料號，放在目檢 CT. 右邊一行。第 5 步的目檢需求工時會再乘上這個 %。會記住上次輸入的值。' })),
+        h('p', { class: 'hint', text: '輸入 90 或 90% 都代表 90%。Plastic 的檢驗率填到 Plastic 每一個料號，Glass 的填到 Glass 每一個料號，放在目檢 CT. 右邊一行。第 5 步的目檢需求工時會再乘上這個 %。會記住上次輸入的值。' })),
       h('li', { class: 'task' },
         h('h2', { text: '匯出' }),
         els.summary, els.notes, els.result,
@@ -406,7 +406,7 @@
 
     var rows = XIO.sectionDataRows(work.main, headerEnd);
     if (!rows.length) {
-      setSummary('MPS 工作表找不到 Cutting、Dipping 的料號列（第 1 步寫的「Cutting（…）」「Dipping（…）」標題下面）。請確認上傳的是這一版第 3 步匯出的檔案。', true);
+      setSummary('MPS 工作表找不到 Plastic、Glass 的料號列（第 1 步寫的「Plastic（…）」「Glass（…）」標題下面）。請確認上傳的是這一版第 3 步匯出的檔案。', true);
       return;
     }
 
@@ -437,7 +437,7 @@
 
     var keyL = XIO.numToCol(keyCol), refKeyL = XIO.numToCol(refKeyCol);
     if (!plan.rows.length) {
-      setSummary('MPS 的 ' + keyL + ' 行在 Cutting、Dipping 兩段裡沒有料號。請確認選的行對不對。', true);
+      setSummary('MPS 的 ' + keyL + ' 行在 Plastic、Glass 兩段裡沒有料號。請確認選的行對不對。', true);
       return;
     }
     if (!plan.found) {

@@ -11,7 +11,7 @@
   // 整個流程的步驟。還沒開發的步驟先列出來，做到時再補上對應的檔案。
   var STEPS = [
     { id: 'mps-filter', title: '篩選 MPS 報表', note: '挑出要算的料號與月份' },
-    { id: 'mps-totals', title: '匯總', note: 'Cutting、Dipping 各月 Total' },
+    { id: 'mps-totals', title: '匯總', note: 'Plastic、Glass 各月 Total' },
     { id: 'p003-import', title: '匯入 P003 標準工時', note: '加到同一個檔案' },
     { id: 'ct-lookup', title: '帶入標準工時 CT.', note: '機台 CT.、目檢 CT.、檢驗率' },
     { id: 'demand-hours', title: '計算需求工時', note: '機台、目檢需求工時' },

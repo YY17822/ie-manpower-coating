@@ -1,5 +1,5 @@
 /*
- * 第 5 步：計算需求工時（Dipping_Milling）
+ * 第 5 步：計算需求工時（Coating）
  *   每個料號各月的計畫產量，分別乘上「機台 CT.」和「目檢 CT.」，算出兩塊需求工時：
  *
  *     機台需求工時   各月 = 數量 * 機台 CT.                 例如 =E6*L6、=F6*L6
@@ -7,10 +7,10 @@
  *   當月也只用當月產量，不加 WIP。
  *
  *   位置：「目檢-檢驗率」之後空一行開始放機台需求工時（六個月），再空一行放目檢需求工時（六個月）。
- *   只算 Cutting、Dipping 兩段的料號列（標題、空白列、第 2 步的 Total 列都跳過）。每格都是公式。
+ *   只算 Plastic、Glass 兩段的料號列（標題、空白列、第 2 步的 Total 列都跳過）。每格都是公式。
  *   表頭：第 2 列是跨所有月份置中的「機台需求工時」／「目檢需求工時」，第 3 列到表頭最後一列是各月的月份。
  *        月份由使用者自己輸入，兩塊用同一組月份。
- *   每一塊在每一段（Milling = Cutting、Dipping）最後一列下面空一列加一列 Total（和第 2 步的 Total 同一列）：
+ *   每一塊在每一段（Plastic、Glass）最後一列下面空一列加一列 Total（和第 2 步的 Total 同一列）：
  *     「Total」放在這一塊左邊那一行，各月 =SUM(P6:P8)；淺綠底，外框粗線、裡面細線。
  *   數值只顯示整數（儲存格裡仍保留小數，加總時用的是完整的數值）。
  *
@@ -147,7 +147,7 @@
 
     panel.appendChild(h('div', { class: 'step-head' },
       h('h1', { text: '計算需求工時' }),
-      h('p', { text: '把每個料號各月的計畫產量乘上機台 CT. 算出「機台需求工時」；乘上目檢 CT. 再乘目檢-檢驗率算出「目檢需求工時」。當月也只用當月產量，不加 WIP。目檢-檢驗率之後空一行放機台需求工時，再空一行放目檢需求工時。只算 Cutting、Dipping 的料號列，每格都是公式；每一段下面空一列加一列 Total。' })));
+      h('p', { text: '把每個料號各月的計畫產量乘上機台 CT. 算出「機台需求工時」；乘上目檢 CT. 再乘目檢-檢驗率算出「目檢需求工時」。當月也只用當月產量，不加 WIP。目檢-檢驗率之後空一行放機台需求工時，再空一行放目檢需求工時。只算 Plastic、Glass 的料號列，每格都是公式；每一段下面空一列加一列 Total。' })));
 
     panel.appendChild(h('ol', { class: 'tasks' },
       h('li', { class: 'task' },
@@ -340,7 +340,7 @@
     var keyCol = src.kind === 'prev' && src.prev.keyCol ? src.prev.keyCol : 1;
     var rows = XIO.sectionDataRows(work.main, headerEnd);
     if (!rows.length) {
-      setSummary('MPS 工作表找不到 Cutting、Dipping 的料號列（第 1 步寫的「Cutting（…）」「Dipping（…）」標題下面）。請確認上傳的是這一版第 4 步匯出的檔案。', true);
+      setSummary('MPS 工作表找不到 Plastic、Glass 的料號列（第 1 步寫的「Plastic（…）」「Glass（…）」標題下面）。請確認上傳的是這一版第 4 步匯出的檔案。', true);
       return;
     }
     var opts = {
@@ -350,7 +350,7 @@
     var plans = XIO.planDemandBlocks(work.main, opts);
     var plan = plans.machine;
     if (!plan.rows.length) {
-      setSummary('Cutting、Dipping 兩段裡沒有料號。請確認上傳的檔案。', true);
+      setSummary('Plastic、Glass 兩段裡沒有料號。請確認上傳的檔案。', true);
       return;
     }
 
@@ -360,7 +360,7 @@
     setSummary('機台需求工時會填在 ' + work.main.name + ' 工作表的 ' + span(plans.machine) +
       '、目檢需求工時在 ' + span(plans.labor) +
       (overwrite ? '（原本就有，會直接覆蓋）' : '（目檢-檢驗率之後空一行，兩塊中間再空一行）') +
-      '，共 ' + plan.rows.length.toLocaleString('en-US') + ' 個料號、' + n + ' 個月。兩塊在 Milling、Dipping 各自最後一列下面空一列加一列 Total（=SUM(…)）。',
+      '，共 ' + plan.rows.length.toLocaleString('en-US') + ' 個料號、' + n + ' 個月。兩塊在 Plastic、Glass 各自最後一列下面空一列加一列 Total（=SUM(…)）。',
       false, plans.machine.noCt > 0 || plans.labor.noCt > 0 || plans.machine.errors > 0 || plans.labor.errors > 0);
 
     renderNotes(plans, monthCols);
