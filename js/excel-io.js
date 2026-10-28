@@ -3173,7 +3173,8 @@
   var DM_UNIT_MERGES = [
     { top: 5, bottom: 6, text: 'day' },
     { top: 12, bottom: 13, text: 'pcs/月' },
-    { top: 32, bottom: 35, text: 'min/月' },
+    { top: 32, bottom: 33, text: 'min/月' },
+    { top: 34, bottom: 35, text: '天 / 月' },
     { top: 36, bottom: 38, text: '人/天' }
   ];
 
@@ -3258,12 +3259,19 @@
    * o.laborHours    dmBlockTotalFormulas()（目檢需求工時）的結果：目檢站 需求工時 - GMO、- Plastic 兩列
    * o.inputs        使用者在畫面上輸入的值（沒填的是 null，那一格留空白）：
    *   workDaysDay、workDaysShift   [6 個月] 工作天數 常日班、做四休二
-   *   workHours、restHours   工作時數、休息時數（小時，六個月共用）→ 工作時間 =(工作時數-休息時數)*60（分鐘）
+   *   workHours、restHours   [6 個月] 工作時數、休息時數（小時）→ 工作時間 =(工作時數-休息時數)*60（分鐘）
    *   machineHours  [6 個月] 機台每日可動工時（小時）→ =小時*60（分鐘）
    *   shifts        [6 個月] 班別數
    *   attendance、efficiency  [6 個月] 出勤率、作業效率（小數，0.95 = 95%）
    *   gmoOtDays、plasticOtDays  [6 個月] 兩站的加班天數
-   * 其他列（共用操機人員、Loading Rate、目檢站其他列、需求／現有人力…）先留空白，之後再補上。
+   *   sharedWash、sharedSpectrum、sharedClean  [6 個月] 共用操機人員 清洗、光譜檢測、大清機
+   * 需求操機人員(GMO+Plastic+共用) =兩站需求操機人員+清洗+光譜檢測+大清機；操機人力 Loading Rate =它/現有操機人員。
+   *   laborOtGmo、laborOtPlastic、laborPplPrep  [6 個月] 目檢站 加班天數 - GMO、- Plastic、需求人力 - 備料
+   * 目檢站 需求人力 =ROUND(需求工時/((工作天數 做四休二+加班天數)*工作時間*班別數)*6/4/出勤率/作業效率,1)；
+   * 需求目檢人員 =ROUND(需求人力 - GMO+需求人力 - Plastic+備料,1)；目檢人力 Loading Rate =需求目檢人員/現有目檢人員。
+   * 需求人力（On Line）=需求操機人員+需求目檢人員；總需求人力 =On Line+Off Line；總現有人力 =現有 On Line+Off Line；
+   * 人力需求差異 =總現有人力-總需求人力；總人力 Loading Rate =總需求人力/總現有人力。
+   * 其他列（現有操機人員、現有目檢人員、需求人力（Off Line）、現有人力 On Line／Off Line）先留空白，之後再補上。
    * 回傳 { worksheet, rows: { key: 列號 }, monthCol, months }
    */
   function addDmReportSheet(wb, o) {
@@ -3388,12 +3396,14 @@
       if (isN(d1)) put('workDaysDay', m, d1);
       var d2 = inp.workDaysShift && inp.workDaysShift[m];
       if (isN(d2)) put('workDaysShift', m, d2);
-      if (isN(inp.workHours) && isN(inp.restHours)) {
-        put('workMinutes', m, {
-          formula: '(' + fmtNum(inp.workHours) + '-' + fmtNum(inp.restHours) + ')*60',
-          result: (inp.workHours - inp.restHours) * 60
-        });
+      var wh = inp.workHours && inp.workHours[m], rh = inp.restHours && inp.restHours[m];
+      if (isN(wh) && isN(rh)) {
+        put('workMinutes', m, { formula: '(' + fmtNum(wh) + '-' + fmtNum(rh) + ')*60', result: (wh - rh) * 60 });
       }
+      ['sharedWash', 'sharedSpectrum', 'sharedClean', 'laborOtGmo', 'laborOtPlastic', 'laborPplPrep'].forEach(function (key) {
+        var v = inp[key] && inp[key][m];
+        if (isN(v)) put(key, m, v);
+      });
       var mh = inp.machineHours && inp.machineHours[m];
       if (isN(mh)) put('machineMinutes', m, { formula: fmtNum(mh) + '*60', result: mh * 60 });
       var sh = inp.shifts && inp.shifts[m];
@@ -3403,9 +3413,11 @@
       var ef = inp.efficiency && inp.efficiency[m];
       if (isN(ef)) put('efficiency', m, ef);
     }
-    if (isN(inp.workHours) && isN(inp.restHours)) {
-      ws.getCell(rows.workMinutes, R.noteCol).value =
-        '工作 ' + fmtNum(inp.workHours) + ' 小時 − 休息 ' + fmtNum(inp.restHours) + ' 小時，× 60';
+    // 工作時間的 Notes：六個月的工作、休息時數都一樣時才寫
+    var wh0 = inp.workHours && inp.workHours[0], rh0 = inp.restHours && inp.restHours[0];
+    if (isN(wh0) && isN(rh0) && inp.workHours.every(function (v) { return v === wh0; }) &&
+        inp.restHours.every(function (v) { return v === rh0; })) {
+      ws.getCell(rows.workMinutes, R.noteCol).value = '工作 ' + fmtNum(wh0) + ' 小時 − 休息 ' + fmtNum(rh0) + ' 小時，× 60';
     }
     if (inp.machineHours && inp.machineHours.some(isN)) {
       ws.getCell(rows.machineMinutes, R.noteCol).value = '輸入的小時 × 60';
@@ -3446,10 +3458,50 @@
       if (hasMax) ws.getCell(rows[k('Machines')], R.noteCol).value = '最多 ' + fmtNum(st.max) + ' 台';
     });
 
+    // 需求操機人員(GMO+Plastic+共用) =GMO 站需求操機人員+Plastic 站需求操機人員+清洗+光譜檢測+大清機
+    // 操機人力 Loading Rate =需求操機人員(GMO+Plastic+共用)/現有操機人員
+    for (m = 0; m < R.months; m++) {
+      put('needOperators', m, {
+        formula: ['gmoNeed', 'plasticNeed', 'sharedWash', 'sharedSpectrum', 'sharedClean']
+          .map(function (key) { return addr(key, m); }).join('+')
+      });
+      put('operatorLoading', m, { formula: addr('needOperators', m) + '/' + addr('haveOperators', m) });
+    }
+
     // 目檢站 需求工時：參照 MPS 工作表該段「目檢需求工時」的 Total 列
     var lh = (o && o.laborHours) || {};
     putList('laborMinGmo', lh.glass);
     putList('laborMinPlastic', lh.plastic);
+
+    // 目檢站 需求人力 - GMO、- Plastic
+    //   =ROUND(需求工時/((工作天數 做四休二+加班天數)*工作時間*班別數)*6/4/出勤率/作業效率,1)
+    // 需求目檢人員 =ROUND(需求人力 - GMO+需求人力 - Plastic+需求人力 - 備料,1)
+    // 目檢人力 Loading Rate =需求目檢人員/現有目檢人員
+    for (m = 0; m < R.months; m++) {
+      [['laborMinGmo', 'laborOtGmo', 'laborPplGmo'], ['laborMinPlastic', 'laborOtPlastic', 'laborPplPlastic']].forEach(function (p) {
+        put(p[2], m, {
+          formula: 'ROUND(' + addr(p[0], m) + '/((' + addr('workDaysShift', m) + '+' + addr(p[1], m) + ')*' +
+            addr('workMinutes', m) + '*' + addr('shifts', m) + ')*6/4/' + addr('attendance', m) + '/' + addr('efficiency', m) + ',1)'
+        });
+      });
+      put('needInspectors', m, {
+        formula: 'ROUND(' + addr('laborPplGmo', m) + '+' + addr('laborPplPlastic', m) + '+' + addr('laborPplPrep', m) + ',1)'
+      });
+      put('inspectorLoading', m, { formula: addr('needInspectors', m) + '/' + addr('haveInspectors', m) });
+    }
+
+    // 需求人力（On Line）(操機+共用+目檢) =需求操機人員(GMO+Plastic+共用)+需求目檢人員
+    // 總需求人力 =需求人力（On Line）+需求人力（Off Line）
+    // 總現有人力 =現有人力（On Line）+現有人力（Off Line）
+    // 人力需求差異 =總現有人力-總需求人力
+    // 總人力 Loading Rate =總需求人力/總現有人力
+    for (m = 0; m < R.months; m++) {
+      put('needOnline', m, { formula: addr('needOperators', m) + '+' + addr('needInspectors', m) });
+      put('needTotal', m, { formula: addr('needOnline', m) + '+' + addr('needOffline', m) });
+      put('haveTotal', m, { formula: addr('haveOnline', m) + '+' + addr('haveOffline', m) });
+      put('gap', m, { formula: addr('haveTotal', m) + '-' + addr('needTotal', m) });
+      put('loading', m, { formula: addr('needTotal', m) + '/' + addr('haveTotal', m) });
+    }
 
     // 列印：直向、一頁寬
     Object.assign(ws.pageSetup, { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 });
@@ -3511,7 +3563,7 @@
   }
 
   var ExcelIO = {
-    VERSION: 5,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
+    VERSION: 9,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
     colToNum: colToNum,
     numToCol: numToCol,
     normalizeText: normalizeText,

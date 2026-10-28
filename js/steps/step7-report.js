@@ -3,9 +3,20 @@
  *   在活頁簿裡新增「光鍍人力需求」工作表，版面照使用者給的範本（B 到 K 行、第 2 到 49 列，
  *   設定在 js/excel-io.js 的 DM_REPORT、DM_ROWS），並填入：
  *     工作天數 - 常日班、做四休二   各月輸入（不會記住）；做四休二自動帶入該月的日曆天數（可以改）
- *     工作時間           輸入工作時數、休息時數（小時，六個月共用），填 =(工作時數-休息時數)*60（分鐘）
+ *     工作時間           各月輸入工作時數、休息時數（小時），填 =(工作時數-休息時數)*60（分鐘）
  *     機台每日可動工時   各月輸入小時，填 =小時*60（分鐘）
- *     機台每日可動工時、班別數、出勤率、作業效率、兩站的加班天數   各月輸入，有「同步首月」按鈕
+ *     工作時數、休息時數、機台每日可動工時、班別數、出勤率、作業效率、兩站的加班天數、共用操機人員   各月輸入，有「同步首月」按鈕
+ *     共用操機人員 清洗、光譜檢測、大清機   各月輸入
+ *     需求操機人員(GMO+Plastic+共用)   =GMO 站需求操機人員+Plastic 站需求操機人員+清洗+光譜檢測+大清機
+ *     操機人力 Loading Rate            =需求操機人員(GMO+Plastic+共用)/現有操機人員
+ *     目檢站 加班天數 - GMO、- Plastic、備料   各月輸入
+ *     目檢站 需求人力 - GMO、- Plastic
+ *       =ROUND(需求工時/((工作天數 做四休二+加班天數)*工作時間*班別數)*6/4/出勤率/作業效率,1)
+ *     需求目檢人員       =ROUND(需求人力 - GMO+需求人力 - Plastic+備料,1)
+ *     目檢人力 Loading Rate =需求目檢人員/現有目檢人員
+ *     需求人力（On Line）(操機+共用+目檢) =需求操機人員(GMO+Plastic+共用)+需求目檢人員
+ *     總需求人力 =需求人力（On Line）+需求人力（Off Line）；總現有人力 =現有人力（On Line）+現有人力（Off Line）
+ *     人力需求差異 =總現有人力-總需求人力；總人力 Loading Rate =總需求人力/總現有人力
  *     MPS GMO、Plastic   公式：參照 MPS 工作表該段（GMO = 第 1 步的 Glass 段）第 2 步的 Total 列，例如 ='MPS'!E10；
  *                        沒有 Total 列就直接加總該段（當月也不加 WIP）
  *     GMO 站、Plastic 站
@@ -54,12 +65,20 @@
   var GRID = [
     { key: 'workDaysDay', label: '工作天數 - 常日班', unit: '天', remember: false },
     { key: 'workDaysShift', label: '工作天數 - 做四休二', unit: '天', remember: false, calendar: true },
+    { key: 'workHours', label: '工作時數', unit: '小時', remember: true, copy: true },
+    { key: 'restHours', label: '休息時數', unit: '小時', remember: true, copy: true },
     { key: 'machineHours', label: '機台每日可動工時', unit: '小時', remember: true, copy: true },
     { key: 'shifts', label: '班別數', unit: '班/天', remember: true, copy: true },
     { key: 'attendance', label: '出勤率', unit: '%', remember: true, copy: true, percent: true },
     { key: 'efficiency', label: '作業效率', unit: '%', remember: true, copy: true, percent: true },
     { key: 'gmoOtDays', label: 'GMO 站 加班天數', unit: '天', remember: true, copy: true },
-    { key: 'plasticOtDays', label: 'Plastic 站 加班天數', unit: '天', remember: true, copy: true }
+    { key: 'plasticOtDays', label: 'Plastic 站 加班天數', unit: '天', remember: true, copy: true },
+    { key: 'sharedWash', label: '共用操機人員 - 清洗', unit: '人/天', remember: true, copy: true },
+    { key: 'sharedSpectrum', label: '共用操機人員 - 光譜檢測', unit: '人/天', remember: true, copy: true },
+    { key: 'sharedClean', label: '共用操機人員 - 大清機', unit: '人/天', remember: true, copy: true },
+    { key: 'laborOtGmo', label: '目檢站 加班天數 - GMO', unit: '天', remember: true, copy: true },
+    { key: 'laborOtPlastic', label: '目檢站 加班天數 - Plastic', unit: '天', remember: true, copy: true },
+    { key: 'laborPplPrep', label: '目檢站 需求人力 - 備料', unit: '人/天', remember: true, copy: true }
   ];
   // 人機比：每一站輸入一組機台數、人員數（六個月共用）
   var STATIONS = [
@@ -67,24 +86,28 @@
     { key: 'plastic', label: 'Plastic 站', name: 'Plastic', machines: 'plasticMachines', people: 'plasticPeople', max: 'plasticMaxMachines', id: 'pla' }
   ];
   var INPUT_KEY = 'step7';             // 共用設定的組名（IEApp.settings）
-  var INP = loadInputs();       // { workDays: ['', …], machineHours: [...], …, workHours: '', restHours: '' }（輸入框的文字）
+  var INP = loadInputs();       // { workDaysDay: ['', …], workHours: [...], …, gmoMachines: '' }（輸入框的文字）
 
   function blankMonths() { var a = []; for (var i = 0; i < R.months; i++) a.push(''); return a; }
   function loadInputs() {
     var s = {};
     try { s = IEApp.settings.read(INPUT_KEY) || {}; } catch (e) { s = {}; }
-    var out = { workHours: s.workHours || '', restHours: s.restHours || '' };
+    var out = {};
     STATIONS.forEach(function (st) {
       out[st.machines] = s[st.machines] || ''; out[st.people] = s[st.people] || ''; out[st.max] = s[st.max] || '';
     });
     GRID.forEach(function (g) {
       var saved = g.remember && Array.isArray(s[g.key]) ? s[g.key] : [];
+      // 版本 5 以前工作時數、休息時數是六個月共用一個值：六個月都填同一個
+      if (g.remember && !Array.isArray(s[g.key]) && s[g.key] !== undefined && s[g.key] !== null && s[g.key] !== '') {
+        saved = blankMonths().map(function () { return s[g.key]; });
+      }
       out[g.key] = blankMonths().map(function (v, i) { return saved[i] === undefined ? '' : String(saved[i]); });
     });
     return out;
   }
   function saveInputs() {
-    var s = { workHours: INP.workHours, restHours: INP.restHours };
+    var s = {};
     STATIONS.forEach(function (st) { s[st.machines] = INP[st.machines]; s[st.people] = INP[st.people]; s[st.max] = INP[st.max]; });
     GRID.forEach(function (g) { if (g.remember) s[g.key] = INP[g.key]; });
     try { IEApp.settings.write(INPUT_KEY, s); } catch (e) { /* 存不了就算了 */ }
@@ -113,12 +136,6 @@
         return v === null || isNaN(v) ? null : v;
       });
     });
-    [['workHours', '工作時數'], ['restHours', '休息時數']].forEach(function (p) {
-      var v = toValue(INP[p[0]], false);
-      if (v === null) blank.push(p[1]);
-      else if (isNaN(v)) bad.push(p[1] + '「' + INP[p[0]] + '」');
-      values[p[0]] = v === null || isNaN(v) ? null : v;
-    });
     STATIONS.forEach(function (st) {
       [[st.machines, st.label + '的機台數'], [st.people, st.label + '的人員數'], [st.max, st.name + ' 機台最大開機數']].forEach(function (p) {
         var v = toValue(INP[p[0]], false);
@@ -128,9 +145,10 @@
       });
       if (values[st.people] === 0) bad.push(st.label + '的人員數不能是 0');
     });
-    if (values.workHours !== null && values.restHours !== null && values.restHours > values.workHours) {
-      bad.push('休息時數比工作時數還多');
-    }
+    values.workHours.forEach(function (w, i) {
+      var r = values.restHours[i];
+      if (w !== null && r !== null && r > w) bad.push('休息時數比工作時數還多（' + names[i] + '）');
+    });
     return { values: values, bad: bad, blank: blank };
   }
 
@@ -375,10 +393,6 @@
     els.exportNote = h('span', { class: 'export-note', 'aria-live': 'polite' });
 
     // 工作時間：工作時數、休息時數（六個月共用）
-    els.workHours = h('input', { id: 'f9-work-h', type: 'text', class: 'in in-tiny', inputmode: 'decimal', autocomplete: 'off', value: INP.workHours, placeholder: '例如 12' });
-    els.restHours = h('input', { id: 'f9-rest-h', type: 'text', class: 'in in-tiny', inputmode: 'decimal', autocomplete: 'off', value: INP.restHours, placeholder: '例如 1' });
-    els.workMinutes = h('span', { class: 'hint-inline' });
-    els.workHours.addEventListener('input', function () { INP.workHours = els.workHours.value; onType(); });
     // 人機比：每一站一列（機台數、人員數）
     els.ratioText = {};
     var ratioRows = STATIONS.map(function (st) {
@@ -399,11 +413,10 @@
           h('span', { class: 'field-label label-fixed', 'aria-hidden': 'true' }),
           h('label', { for: 'f9-' + st.id + '-x', text: st.name + ' 機台最大開機數' }), xIn, h('span', { text: '台' })));
     });
-    els.restHours.addEventListener('input', function () { INP.restHours = els.restHours.value; onType(); });
 
     panel.appendChild(h('div', { class: 'step-head' },
       h('h1', { text: '總表' }),
-      h('p', { text: '在同一個檔案裡新增「光鍍人力需求」工作表（一般鍍膜）：MPS、GMO 站、Plastic 站、共用操機人員、目檢站、需求人力、現有人力、人力需求差異、Loading Rate。月份表頭會參照 MPS 工作表「機台需求工時」的月份。這一步先填工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站的機台需求工時、人機比，以及目檢站的需求工時；其他格之後再補上。GMO 是第 1 步的 Glass 那一段。' })));
+      h('p', { text: '在同一個檔案裡新增「光鍍人力需求」工作表（一般鍍膜）：MPS、GMO 站、Plastic 站、共用操機人員、目檢站、需求人力、現有人力、人力需求差異、Loading Rate。月份表頭會參照 MPS 工作表「機台需求工時」的月份。這一步先填工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站、共用操機人員、需求操機人員、操機人力 Loading Rate、目檢站、需求目檢人員、目檢人力 Loading Rate；其他格之後再補上。GMO 是第 1 步的 Glass 那一段。' })));
 
     panel.appendChild(h('ol', { class: 'tasks' },
       h('li', { class: 'task' },
@@ -412,16 +425,9 @@
         h('div', { class: 'link-row' }, els.switchBtn, els.backBtn),
         els.srcMsg),
       h('li', { class: 'task' },
-        h('h2', { text: '工作時間' }),
-        h('div', { class: 'field-row' },
-          h('label', { for: 'f9-work-h', text: '工作時數' }), els.workHours, h('span', { text: '小時' }),
-          h('label', { for: 'f9-rest-h', text: '休息時數' }), els.restHours, h('span', { text: '小時' }),
-          els.workMinutes),
-        h('p', { class: 'hint', text: '六個月共用。總表的工作時間會填公式 =(工作時數-休息時數)*60，單位是分鐘。會記住上次輸入的值。' })),
-      h('li', { class: 'task' },
         h('h2', { text: '各月的數值' }),
         buildInputGrid(),
-        h('p', { class: 'hint', text: '工作天數 - 做四休二會自動帶入該月的日曆天數（例如 Oct 是 31），不對可以直接改；按「帶入日曆天數」會六個月重新帶入。出勤率、作業效率輸入 95 或 95% 都代表 95%。機台每日可動工時、班別數、出勤率、作業效率、加班天數只要填第一個月，再按「同步首月」。機台每日可動工時輸入小時，總表會換算成分鐘（例如 =22*60）。工作天數每個月不同，不會記住；其他會記住上次輸入的值。沒填的格子在總表留空白。' })),
+        h('p', { class: 'hint', text: '工作天數 - 做四休二會自動帶入該月的日曆天數（例如 Oct 是 31），不對可以直接改；按「帶入日曆天數」會六個月重新帶入。工作時數、休息時數輸入小時，總表的工作時間會填公式 =(工作時數-休息時數)*60（分鐘）。出勤率、作業效率輸入 95 或 95% 都代表 95%。每月都一樣的列只要填第一個月，再按「同步首月」。機台每日可動工時輸入小時，總表會換算成分鐘（例如 =22*60）。共用操機人員（清洗、光譜檢測、大清機）的人數會加進總表的「需求操機人員(GMO+Plastic+共用)」；目檢站的備料人數會加進「需求目檢人員」。工作天數每個月不同，不會記住；其他會記住上次輸入的值。沒填的格子在總表留空白。' })),
       h('li', { class: 'task' },
         h('h2', { text: 'GMO 站、Plastic 站' }),
         ratioRows,
@@ -573,7 +579,7 @@
         '還沒填：' + read.blank.slice(0, 12).join('、') + (read.blank.length > 12 ? ' …等 ' + read.blank.length + ' 格' : '') +
         '。沒填的格子在總表留空白，一樣可以匯出。'));
     }
-    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站（機台需求工時、人機比、開機數、加班天數、需求操機人員）、目檢站的需求工時；其他格（共用操機人員、Loading Rate、目檢站其他列、需求／現有人力等）先留空白，之後再補上。'));
+    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站（機台需求工時、人機比、開機數、加班天數、需求操機人員）、共用操機人員、需求操機人員(GMO+Plastic+共用)、操機人力 Loading Rate、目檢站（需求工時、加班天數、需求人力、備料）、需求目檢人員、目檢人力 Loading Rate、需求人力（On Line）、總需求人力、總現有人力、人力需求差異、總人力 Loading Rate；現有操機人員、現有目檢人員、需求人力（Off Line）、現有人力（On Line、Off Line）先留空白，之後再補上。現有人力還沒填時，三個 Loading Rate 會顯示 #DIV/0!。'));
 
     var inputs = read.values;
     els.exportBtn.disabled = false;
@@ -595,9 +601,6 @@
     GRID.forEach(function (g) { if (g.calendar) fillCalendar(g.key, false); });
     var names = monthNames();
     (els.monthHeads || []).forEach(function (th, i) { th.textContent = names[i]; });
-    var w = toValue(INP.workHours, false), r = toValue(INP.restHours, false);
-    els.workMinutes.textContent = w !== null && r !== null && !isNaN(w) && !isNaN(r)
-      ? '＝ 每班 ' + Math.round((w - r) * 60 * 100) / 100 + ' 分鐘' : '';
     STATIONS.forEach(function (st) {
       var mm = toValue(INP[st.machines], false), pp = toValue(INP[st.people], false);
       els.ratioText[st.key].textContent = mm !== null && pp !== null && !isNaN(mm) && !isNaN(pp) && pp > 0
