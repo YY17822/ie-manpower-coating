@@ -161,15 +161,17 @@ P003 的 Machine、Labor 是做 Base Qty 個的工時（Base Qty 有 1 也有 10
 - `人力` 工作表是整張照抄（值、格式、合併儲存格、行寬、列高），公式換成數值。上傳的檔案裡如果已經有 `人力` 工作表，會換成這次上傳的。
 - 確認的位置放在 `IEApp.state.withManpower`（`rows`：各項目的列號，`firstMonthCol`：當月的行號，`monthCount`：6），給之後的總表用。
 
-## 第 7 步：總表（光鍍人力需求，版本 4 起）
+## 第 7 步：總表（光鍍人力需求，版本 4 起；開機數、加班天數、需求操機人員版本 5 起）
 
 在同一個檔案裡新增 `光鍍人力需求` 工作表，版面、格式、文字照範本（標題「一般鍍膜」），並填入畫面上輸入的數值和對得上的公式。其他格之後再一項一項補上。
 
 1. 第 6 步的 Excel：剛做完第 6 步的話會直接沿用；也可以上傳之前第 6 步匯出的檔案。
 2. 工作時間：輸入工作時數、休息時數（小時，六個月共用）。
-3. 各月的數值：工作天數 - 常日班、工作天數 - 做四休二、機台每日可動工時（小時）、班別數、出勤率、作業效率。
-   機台每日可動工時、班別數、出勤率、作業效率只要填第一個月，再按「套用到全部月份」。
-4. 人機比：GMO 站、Plastic 站各輸入機台數、人員數（六個月共用）。
+3. 各月的數值：工作天數 - 常日班、工作天數 - 做四休二、機台每日可動工時（小時）、班別數、出勤率、作業效率、GMO 站 加班天數、Plastic 站 加班天數。
+   - 工作天數 - 做四休二會自動帶入該月的日曆天數（例如 Oct 是 31、Feb 是 28 或 29），不對可以直接改；按「帶入日曆天數」六個月重新帶入。
+     月份是看總表月份表頭的文字（第 5 步輸入的 Jan～Dec）；沒寫年份時，第一個月取離今天最近的那一年，之後遇到跨年加一年。
+   - 機台每日可動工時、班別數、出勤率、作業效率、兩站的加班天數只要填第一個月，再按「同步首月」。
+4. GMO 站、Plastic 站各輸入：人機比的機台數、人員數，以及機台最大開機數（六個月共用）。
 5. 按「匯出 Excel」，得到 `…_人力_總表.xlsx`。
 
 GMO = 第 1 步的 Glass 那一段（GMO-Coating + Filter&UVIR-Coating）。
@@ -185,10 +187,14 @@ GMO = 第 1 步的 Glass 那一段（GMO-Coating + Filter&UVIR-Coating）。
 | MPS GMO、Plastic（第 12、13 列） | 參照 MPS 工作表 Glass、Plastic 段第 2 步的 Total 列 | `='MPS'!E25`、`='MPS'!E10` |
 | GMO 站、Plastic 站 機台需求工時（第 14、19 列） | 參照該段「機台需求工時」第 5 步的 Total 列 | `='MPS'!P25`、`='MPS'!P10` |
 | GMO 站、Plastic 站 人機比（第 15、20 列） | 機台數 ÷ 人員數；Notes 寫「1 人顧 4 機」 | `=4/1` |
+| GMO 站、Plastic 站 開機數（第 16、21 列） | 機台需求工時 ÷ ((工作天數 做四休二 + 該站加班天數) × 機台每日可動工時)，四捨五入到小數一位；超過最大開機數就顯示最大開機數（沒填不設上限），Notes 寫「最多 N 台」 | `=MIN(ROUND(E14/((E6+E17)*E8),1),8)` |
+| GMO 站、Plastic 站 加班天數（第 17、22 列） | 各月輸入 | `2` |
+| GMO 站、Plastic 站 需求操機人員（第 18、23 列） | 開機數 ÷ 人機比 × 班別數 × 6/4 ÷ 出勤率 ÷ 作業效率，四捨五入到小數一位 | `=ROUND(E16/E15*E9*6/4/E10/E11,1)` |
 | 目檢站 需求工時 - GMO、- Plastic（第 32、33 列） | 參照該段「目檢需求工時」第 5 步的 Total 列 | `='MPS'!W25`、`='MPS'!W10` |
 
 - 沒有 Total 列（跳過第 2 或第 5 步）時，改成直接加總該段，例如 `=SUM('MPS'!E6:E8)`。
-- 開機數、加班天數、需求操機人員、共用操機人員、Loading Rate、需求／現有人力等其他列先留空白。
+- 共用操機人員、Loading Rate、目檢站的其他列、需求／現有人力等其他列先留空白。
+- 工作天數或機台每日可動工時沒填時，開機數會顯示 `#DIV/0!`；人機比沒填時，需求操機人員會顯示 `#DIV/0!`。
 - 工作天數每個月不同，不會記住；其他輸入會記住。沒填的格子留空白，畫面會提醒但不擋匯出。
 
 版面（B 到 K 行、第 2 到 49 列，照範本）：
@@ -299,6 +305,8 @@ icons/                      圖示
 | `step7.workHours`、`step7.restHours` | 第 7 步：工作時數、休息時數 |
 | `step7.machineHours`、`step7.shifts`、`step7.attendance`、`step7.efficiency` | 第 7 步：機台每日可動工時、班別數、出勤率、作業效率，各 6 個月 |
 | `step7.gmoMachines`、`step7.gmoPeople`、`step7.plasticMachines`、`step7.plasticPeople` | 第 7 步：GMO 站、Plastic 站的機台數和人數 |
+| `step7.gmoMaxMachines`、`step7.plasticMaxMachines` | 第 7 步：GMO、Plastic 機台最大開機數 |
+| `step7.gmoOtDays`、`step7.plasticOtDays` | 第 7 步：兩站的加班天數，各 6 個月 |
 - 不記住的欄位（第 7 步的工作天數 常日班、做四休二）照舊每次輸入，不會上傳。
 - 程式在 `js/cloud.js`，用 supabase-js 套件連線（`vendor/supabase.js`，版本 2.117.3，放在專案裡，離線也載得到）。雲端、本機自架、公司主機上的 Supabase 都用同一套程式，換資料庫只改 `js/config.js` 的 `SUPABASE_PUBLIC_URL`、`SUPABASE_PUBLISHABLE_KEY`。各步驟用 `IEApp.settings.read('step7')`／`IEApp.settings.write('step7', 物件)` 讀寫一整步的設定，`cloud.js` 負責拆成一個個輸入項目上傳、下載時再組回去。
 - Supabase 的網址和公開鑰匙在 `js/config.js`。公開鑰匙本來就是公開用的；安全靠登入和資料表的權限規則（只有登入的人能讀寫，不能刪除）。`SUPABASE_SECRET_KEY`（舊式名稱：`SERVICE_ROLE_KEY`）不可以放進程式。
@@ -372,4 +380,4 @@ for each row execute function ie_manpower.stamp_settings();
 
 ## 尚未開發
 
-- 第 7 步總表（光鍍人力需求）的開機數、加班天數、需求操機人員、共用操機人員、Loading Rate、需求／現有人力等列
+- 第 7 步總表（光鍍人力需求）的共用操機人員、Loading Rate、目檢站其他列、需求／現有人力等列

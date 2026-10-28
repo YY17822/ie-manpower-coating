@@ -3254,6 +3254,7 @@
    * o.gmoHours      dmBlockTotalFormulas() 的 glass：GMO 站 機台需求工時各月的公式
    * o.gmoRatio      { machines, people } GMO 站 人機比的機台數、人員數
    * o.plasticHours、o.plasticRatio   Plastic 站，同上
+   * o.gmoMax、o.plasticMax   兩站的機台最大開機數（沒填是 null：開機數不設上限）
    * o.laborHours    dmBlockTotalFormulas()（目檢需求工時）的結果：目檢站 需求工時 - GMO、- Plastic 兩列
    * o.inputs        使用者在畫面上輸入的值（沒填的是 null，那一格留空白）：
    *   workDaysDay、workDaysShift   [6 個月] 工作天數 常日班、做四休二
@@ -3261,7 +3262,8 @@
    *   machineHours  [6 個月] 機台每日可動工時（小時）→ =小時*60（分鐘）
    *   shifts        [6 個月] 班別數
    *   attendance、efficiency  [6 個月] 出勤率、作業效率（小數，0.95 = 95%）
-   * 其他列（開機數、加班天數、需求操機人員、共用操機人員、Loading Rate、需求／現有人力…）先留空白，之後再補上。
+   *   gmoOtDays、plasticOtDays  [6 個月] 兩站的加班天數
+   * 其他列（共用操機人員、Loading Rate、目檢站其他列、需求／現有人力…）先留空白，之後再補上。
    * 回傳 { worksheet, rows: { key: 列號 }, monthCol, months }
    */
   function addDmReportSheet(wb, o) {
@@ -3409,18 +3411,39 @@
       ws.getCell(rows.machineMinutes, R.noteCol).value = '輸入的小時 × 60';
     }
 
-    // GMO 站、Plastic 站：機台需求工時（參照 MPS 工作表該段「機台需求工時」的 Total 列）、人機比（=機台數/人員數）
+    // GMO 站、Plastic 站（算法相同，各自的列）
+    //   機台需求工時：參照 MPS 工作表該段「機台需求工時」的 Total 列
+    //   人機比：=機台數/人員數（六個月共用），Notes 寫「1 人顧 4 機」
+    //   開機數：=MIN(ROUND(機台需求工時/((工作天數 做四休二+加班天數)*機台每日可動工時),1),最大開機數)
+    //           沒填最大開機數就不用 MIN；Notes 寫「最多 N 台」
+    //   加班天數：使用者輸入
+    //   需求操機人員：=ROUND(開機數/人機比*班別數*6/4/出勤率/作業效率,1)
+    function addr(key, mm) { return numToCol(R.monthCol + mm) + rows[key]; }
     [
-      { p: 'gmo', hours: o && o.gmoHours, ratio: o && o.gmoRatio },
-      { p: 'plastic', hours: o && o.plasticHours, ratio: o && o.plasticRatio }
+      { p: 'gmo', hours: o && o.gmoHours, ratio: o && o.gmoRatio, max: o && o.gmoMax, ot: inp.gmoOtDays },
+      { p: 'plastic', hours: o && o.plasticHours, ratio: o && o.plasticRatio, max: o && o.plasticMax, ot: inp.plasticOtDays }
     ].forEach(function (st) {
-      putList(st.p + 'Hours', st.hours);
+      var k = function (name) { return st.p + name; };     // 例如 gmoHours、plasticRatio
+      putList(k('Hours'), st.hours);
       var ratio = st.ratio || {};
-      if (!(isN(ratio.machines) && isN(ratio.people) && ratio.people > 0)) return;
+      var hasRatio = isN(ratio.machines) && isN(ratio.people) && ratio.people > 0;
+      var hasMax = isN(st.max);
       for (var mm = 0; mm < R.months; mm++) {
-        put(st.p + 'Ratio', mm, { formula: fmtNum(ratio.machines) + '/' + fmtNum(ratio.people), result: ratio.machines / ratio.people });
+        if (hasRatio) {
+          put(k('Ratio'), mm, { formula: fmtNum(ratio.machines) + '/' + fmtNum(ratio.people), result: ratio.machines / ratio.people });
+        }
+        var ot = st.ot && st.ot[mm];
+        if (isN(ot)) put(k('OtDays'), mm, ot);
+        var calc = 'ROUND(' + addr(k('Hours'), mm) + '/((' + addr('workDaysShift', mm) + '+' + addr(k('OtDays'), mm) + ')*' +
+          addr('machineMinutes', mm) + '),1)';
+        put(k('Machines'), mm, { formula: hasMax ? 'MIN(' + calc + ',' + fmtNum(st.max) + ')' : calc });
+        put(k('Need'), mm, {
+          formula: 'ROUND(' + addr(k('Machines'), mm) + '/' + addr(k('Ratio'), mm) + '*' + addr('shifts', mm) + '*6/4/' +
+            addr('attendance', mm) + '/' + addr('efficiency', mm) + ',1)'
+        });
       }
-      ws.getCell(rows[st.p + 'Ratio'], R.noteCol).value = fmtNum(ratio.people) + ' 人顧 ' + fmtNum(ratio.machines) + ' 機';
+      if (hasRatio) ws.getCell(rows[k('Ratio')], R.noteCol).value = fmtNum(ratio.people) + ' 人顧 ' + fmtNum(ratio.machines) + ' 機';
+      if (hasMax) ws.getCell(rows[k('Machines')], R.noteCol).value = '最多 ' + fmtNum(st.max) + ' 台';
     });
 
     // 目檢站 需求工時：參照 MPS 工作表該段「目檢需求工時」的 Total 列
@@ -3488,7 +3511,7 @@
   }
 
   var ExcelIO = {
-    VERSION: 4,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
+    VERSION: 5,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
     colToNum: colToNum,
     numToCol: numToCol,
     normalizeText: normalizeText,

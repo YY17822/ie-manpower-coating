@@ -2,15 +2,19 @@
  * 第 7 步：總表（Coating：一般鍍膜）
  *   在活頁簿裡新增「光鍍人力需求」工作表，版面照使用者給的範本（B 到 K 行、第 2 到 49 列，
  *   設定在 js/excel-io.js 的 DM_REPORT、DM_ROWS），並填入：
- *     工作天數 - 常日班、做四休二   各月輸入（不會記住）
+ *     工作天數 - 常日班、做四休二   各月輸入（不會記住）；做四休二自動帶入該月的日曆天數（可以改）
  *     工作時間           輸入工作時數、休息時數（小時，六個月共用），填 =(工作時數-休息時數)*60（分鐘）
  *     機台每日可動工時   各月輸入小時，填 =小時*60（分鐘）
- *     機台每日可動工時、班別數、出勤率、作業效率   各月輸入，有「套用到全部月份」按鈕
+ *     機台每日可動工時、班別數、出勤率、作業效率、兩站的加班天數   各月輸入，有「同步首月」按鈕
  *     MPS GMO、Plastic   公式：參照 MPS 工作表該段（GMO = 第 1 步的 Glass 段）第 2 步的 Total 列，例如 ='MPS'!E10；
  *                        沒有 Total 列就直接加總該段（當月也不加 WIP）
  *     GMO 站、Plastic 站
  *       機台需求工時   公式：參照 MPS 工作表該段「機台需求工時」第 5 步的 Total 列，例如 ='MPS'!P10
  *       人機比         輸入機台數、人員數（六個月共用），填 =機台數/人員數；Notes 寫「1 人顧 4 機」
+ *       開機數         =MIN(ROUND(機台需求工時/((工作天數 做四休二+該站加班天數)*機台每日可動工時),1),最大開機數)
+ *                      最大開機數在畫面上輸入（每一站一個）；沒填就不設上限
+ *       加班天數       各月輸入
+ *       需求操機人員   =ROUND(開機數/人機比*班別數*6/4/出勤率/作業效率,1)
  *     目檢站 需求工時 - GMO、- Plastic   公式：參照 MPS 工作表該段「目檢需求工時」第 5 步的 Total 列
  *   其他格（開機數、加班天數、需求操機人員、共用操機人員、Loading Rate、需求／現有人力…）之後再一項一項補上。
  *
@@ -45,19 +49,22 @@
   var els = {};
 
   /* ---------- 使用者輸入的數值 ---------- */
-  // 每個月一格的列。percent：輸入的是 %（95 代表 95%）；copy：後面有「套用到全部月份」按鈕；remember：記在瀏覽器裡
+  // 每個月一格的列。percent：輸入的是 %（95 代表 95%）；copy：後面有「同步首月」按鈕；remember：記在瀏覽器裡
+  // calendar：自動帶入該月的日曆天數（還沒改過的格子），後面有「帶入日曆天數」按鈕
   var GRID = [
     { key: 'workDaysDay', label: '工作天數 - 常日班', unit: '天', remember: false },
-    { key: 'workDaysShift', label: '工作天數 - 做四休二', unit: '天', remember: false },
+    { key: 'workDaysShift', label: '工作天數 - 做四休二', unit: '天', remember: false, calendar: true },
     { key: 'machineHours', label: '機台每日可動工時', unit: '小時', remember: true, copy: true },
     { key: 'shifts', label: '班別數', unit: '班/天', remember: true, copy: true },
     { key: 'attendance', label: '出勤率', unit: '%', remember: true, copy: true, percent: true },
-    { key: 'efficiency', label: '作業效率', unit: '%', remember: true, copy: true, percent: true }
+    { key: 'efficiency', label: '作業效率', unit: '%', remember: true, copy: true, percent: true },
+    { key: 'gmoOtDays', label: 'GMO 站 加班天數', unit: '天', remember: true, copy: true },
+    { key: 'plasticOtDays', label: 'Plastic 站 加班天數', unit: '天', remember: true, copy: true }
   ];
   // 人機比：每一站輸入一組機台數、人員數（六個月共用）
   var STATIONS = [
-    { key: 'glass', label: 'GMO 站', name: 'GMO', machines: 'gmoMachines', people: 'gmoPeople', id: 'gmo' },
-    { key: 'plastic', label: 'Plastic 站', name: 'Plastic', machines: 'plasticMachines', people: 'plasticPeople', id: 'pla' }
+    { key: 'glass', label: 'GMO 站', name: 'GMO', machines: 'gmoMachines', people: 'gmoPeople', max: 'gmoMaxMachines', id: 'gmo' },
+    { key: 'plastic', label: 'Plastic 站', name: 'Plastic', machines: 'plasticMachines', people: 'plasticPeople', max: 'plasticMaxMachines', id: 'pla' }
   ];
   var INPUT_KEY = 'step7';             // 共用設定的組名（IEApp.settings）
   var INP = loadInputs();       // { workDays: ['', …], machineHours: [...], …, workHours: '', restHours: '' }（輸入框的文字）
@@ -67,7 +74,9 @@
     var s = {};
     try { s = IEApp.settings.read(INPUT_KEY) || {}; } catch (e) { s = {}; }
     var out = { workHours: s.workHours || '', restHours: s.restHours || '' };
-    STATIONS.forEach(function (st) { out[st.machines] = s[st.machines] || ''; out[st.people] = s[st.people] || ''; });
+    STATIONS.forEach(function (st) {
+      out[st.machines] = s[st.machines] || ''; out[st.people] = s[st.people] || ''; out[st.max] = s[st.max] || '';
+    });
     GRID.forEach(function (g) {
       var saved = g.remember && Array.isArray(s[g.key]) ? s[g.key] : [];
       out[g.key] = blankMonths().map(function (v, i) { return saved[i] === undefined ? '' : String(saved[i]); });
@@ -76,7 +85,7 @@
   }
   function saveInputs() {
     var s = { workHours: INP.workHours, restHours: INP.restHours };
-    STATIONS.forEach(function (st) { s[st.machines] = INP[st.machines]; s[st.people] = INP[st.people]; });
+    STATIONS.forEach(function (st) { s[st.machines] = INP[st.machines]; s[st.people] = INP[st.people]; s[st.max] = INP[st.max]; });
     GRID.forEach(function (g) { if (g.remember) s[g.key] = INP[g.key]; });
     try { IEApp.settings.write(INPUT_KEY, s); } catch (e) { /* 存不了就算了 */ }
   }
@@ -111,7 +120,7 @@
       values[p[0]] = v === null || isNaN(v) ? null : v;
     });
     STATIONS.forEach(function (st) {
-      [[st.machines, st.label + '的機台數'], [st.people, st.label + '的人員數']].forEach(function (p) {
+      [[st.machines, st.label + '的機台數'], [st.people, st.label + '的人員數'], [st.max, st.name + ' 機台最大開機數']].forEach(function (p) {
         var v = toValue(INP[p[0]], false);
         if (v === null) blank.push(p[1]);
         else if (isNaN(v)) bad.push(p[1] + '「' + INP[p[0]] + '」');
@@ -154,19 +163,97 @@
           value: INP[g.key][m], 'aria-label': g.label + ' 第 ' + (m + 1) + ' 個月'
         });
         (function (key, idx, el) {
-          el.addEventListener('input', function () { INP[key][idx] = el.value; onType(); });
+          el.addEventListener('input', function () {
+            INP[key][idx] = el.value;
+            if (AUTO[key]) AUTO[key][idx] = false;      // 自己改過的格子，之後不再自動帶入
+            onType();
+          });
         })(g.key, m, input);
         els.gridInputs[g.key].push(input);
         tr.appendChild(h('td', null, input));
       }
       tr.appendChild(h('td', null, g.copy ? h('button', {
-        type: 'button', class: 'btn-secondary btn-small', text: '套用到全部月份',
+        type: 'button', class: 'btn-secondary btn-small', text: '同步首月',
         title: '把第一個月的值填到後面每個月',
         onclick: function () { copyFirst(g.key); }
+      }) : g.calendar ? h('button', {
+        type: 'button', class: 'btn-secondary btn-small', text: '帶入日曆天數',
+        title: '六個月都重新填入該月的日曆天數',
+        onclick: function () { fillCalendar(g.key, true); }
       }) : (g.note ? h('span', { class: 'grid-note', text: g.note }) : null)));
       body.appendChild(tr);
     });
     return h('div', { class: 'sheet-scroll grid-scroll' }, h('table', { class: 'grid-inputs' }, h('thead', null, head), body));
+  }
+
+  /* ---------- 工作天數 做四休二：自動帶入日曆天數 ---------- */
+  // AUTO[key][i] = true：這一格是程式自動帶入的（換了月份會跟著重算）；使用者改過就變 false
+  var AUTO = {};
+  GRID.forEach(function (g) {
+    if (!g.calendar) return;
+    AUTO[g.key] = INP[g.key].map(function (v) { return v === ''; });
+  });
+
+  var MONTH_ABBR = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  // 月份表頭的文字 → { month: 0–11, year: 西元年或 null }；看不懂回傳 null
+  function parseMonth(text) {
+    var t = XIO.normalizeText(text || '').toLowerCase();
+    if (!t) return null;
+    var m = -1, y = null, k;
+    var iso = /(\d{4})\s*[\/\-.年]\s*(\d{1,2})/.exec(t);
+    if (iso) { y = +iso[1]; m = +iso[2] - 1; }
+    if (m < 0) {
+      for (k = 0; k < 12; k++) if (t.indexOf(MONTH_ABBR[k]) >= 0) { m = k; break; }
+    }
+    if (m < 0) { var zh = /(\d{1,2})\s*月/.exec(t); if (zh) m = +zh[1] - 1; }
+    if (m < 0 || m > 11) return null;
+    if (y === null) {
+      var y4 = /(\d{4})/.exec(t);
+      var y2 = /[\-\/'\s]\s*(\d{2})\s*$/.exec(t);
+      if (y4) y = +y4[1]; else if (y2) y = 2000 + +y2[1];
+    }
+    return { month: m, year: y };
+  }
+  // 六個月各自的日曆天數；月份看不懂的回傳 null。
+  // 沒寫年份時：第一個月取離今天最近的那一年，後面的月份遇到跨年就加一年
+  function calendarDays(names) {
+    var today = new Date();
+    var prev = null;
+    return names.map(function (name) {
+      var p = parseMonth(name);
+      if (!p) { prev = null; return null; }
+      var y = p.year;
+      if (y === null) {
+        if (prev) y = p.month <= prev.month ? prev.year + 1 : prev.year;
+        else {
+          y = today.getFullYear();
+          var diff = p.month - today.getMonth();
+          if (diff > 6) y--; else if (diff < -6) y++;
+        }
+      }
+      prev = { month: p.month, year: y };
+      return new Date(y, p.month + 1, 0).getDate();
+    });
+  }
+  // 填入日曆天數：force = 六格都重填（按鈕）；否則只填還沒改過的格子
+  function fillCalendar(key, force) {
+    if (!S.work || !S.work.refs) {
+      if (force) els.exportNote.textContent = '還沒有月份（要先有第 5 步的機台需求工時月份），沒辦法帶入日曆天數。';
+      return false;
+    }
+    var days = calendarDays(monthNames());
+    var changed = false;
+    for (var i = 0; i < R.months; i++) {
+      if (days[i] === null || (!force && !AUTO[key][i])) continue;
+      var v = String(days[i]);
+      AUTO[key][i] = true;
+      if (INP[key][i] === v) continue;
+      INP[key][i] = v;
+      if (els.gridInputs && els.gridInputs[key]) els.gridInputs[key][i].value = v;
+      changed = true;
+    }
+    if (force) onType();
+    return changed;
   }
 
   function copyFirst(key) {
@@ -299,12 +386,18 @@
       var pIn = h('input', { id: 'f9-' + st.id + '-p', type: 'text', class: 'in in-tiny', inputmode: 'decimal', autocomplete: 'off', value: INP[st.people], placeholder: '例如 1' });
       mIn.addEventListener('input', function () { INP[st.machines] = mIn.value; onType(); });
       pIn.addEventListener('input', function () { INP[st.people] = pIn.value; onType(); });
+      var xIn = h('input', { id: 'f9-' + st.id + '-x', type: 'text', class: 'in in-tiny', inputmode: 'decimal', autocomplete: 'off', value: INP[st.max], placeholder: '例如 8' });
+      xIn.addEventListener('input', function () { INP[st.max] = xIn.value; onType(); });
       els.ratioText[st.key] = h('span', { class: 'hint-inline' });
-      return h('div', { class: 'field-row' },
-        h('span', { class: 'field-label label-fixed', text: st.label }),
-        h('label', { for: 'f9-' + st.id + '-m', text: '機台數' }), mIn, h('span', { text: '台' }),
-        h('label', { for: 'f9-' + st.id + '-p', text: '人員數' }), pIn, h('span', { text: '人' }),
-        els.ratioText[st.key]);
+      return h('div', { class: 'station-block' },
+        h('div', { class: 'field-row' },
+          h('span', { class: 'field-label label-fixed', text: st.label }),
+          h('label', { for: 'f9-' + st.id + '-m', text: '人機比：機台數' }), mIn, h('span', { text: '台' }),
+          h('label', { for: 'f9-' + st.id + '-p', text: '人員數' }), pIn, h('span', { text: '人' }),
+          els.ratioText[st.key]),
+        h('div', { class: 'field-row' },
+          h('span', { class: 'field-label label-fixed', 'aria-hidden': 'true' }),
+          h('label', { for: 'f9-' + st.id + '-x', text: st.name + ' 機台最大開機數' }), xIn, h('span', { text: '台' })));
     });
     els.restHours.addEventListener('input', function () { INP.restHours = els.restHours.value; onType(); });
 
@@ -328,11 +421,13 @@
       h('li', { class: 'task' },
         h('h2', { text: '各月的數值' }),
         buildInputGrid(),
-        h('p', { class: 'hint', text: '出勤率、作業效率輸入 95 或 95% 都代表 95%。機台每日可動工時、班別數、出勤率、作業效率只要填第一個月，再按「套用到全部月份」。機台每日可動工時輸入小時，總表會換算成分鐘（例如 =22*60）。工作天數每個月不同，不會記住；其他會記住上次輸入的值。沒填的格子在總表留空白。' })),
+        h('p', { class: 'hint', text: '工作天數 - 做四休二會自動帶入該月的日曆天數（例如 Oct 是 31），不對可以直接改；按「帶入日曆天數」會六個月重新帶入。出勤率、作業效率輸入 95 或 95% 都代表 95%。機台每日可動工時、班別數、出勤率、作業效率、加班天數只要填第一個月，再按「同步首月」。機台每日可動工時輸入小時，總表會換算成分鐘（例如 =22*60）。工作天數每個月不同，不會記住；其他會記住上次輸入的值。沒填的格子在總表留空白。' })),
       h('li', { class: 'task' },
-        h('h2', { text: '人機比' }),
+        h('h2', { text: 'GMO 站、Plastic 站' }),
         ratioRows,
-        h('p', { class: 'hint', text: '每一站一組，六個月共用。總表的人機比填公式 =機台數/人員數，Notes 寫「幾人顧幾機」。會記住上次輸入的值。' })),
+        h('p', { class: 'hint', text: '每一站一組，六個月共用，會記住上次輸入的值。總表的人機比填公式 =機台數/人員數，Notes 寫「幾人顧幾機」。' +
+          '開機數 =ROUND(機台需求工時/((工作天數 做四休二+該站加班天數)*機台每日可動工時),1)，算出來超過最大開機數就顯示最大開機數（沒填就不設上限）。' +
+          '需求操機人員 =ROUND(開機數/人機比*班別數*6/4/出勤率/作業效率,1)。' })),
       h('li', { class: 'task' },
         h('h2', { text: '匯出' }),
         els.summary, els.notes, els.layout,
@@ -478,7 +573,7 @@
         '還沒填：' + read.blank.slice(0, 12).join('、') + (read.blank.length > 12 ? ' …等 ' + read.blank.length + ' 格' : '') +
         '。沒填的格子在總表留空白，一樣可以匯出。'));
     }
-    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站的機台需求工時和人機比、目檢站的需求工時；其他格（開機數、加班天數、需求操機人員、共用操機人員、Loading Rate、需求／現有人力等）先留空白，之後再補上。'));
+    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站（機台需求工時、人機比、開機數、加班天數、需求操機人員）、目檢站的需求工時；其他格（共用操機人員、Loading Rate、目檢站其他列、需求／現有人力等）先留空白，之後再補上。'));
 
     var inputs = read.values;
     els.exportBtn.disabled = false;
@@ -497,6 +592,7 @@
 
   // 月份名稱（從 MPS 抓到的）、工作時間換算後的分鐘，顯示在輸入區
   function refreshInputLabels() {
+    GRID.forEach(function (g) { if (g.calendar) fillCalendar(g.key, false); });
     var names = monthNames();
     (els.monthHeads || []).forEach(function (th, i) { th.textContent = names[i]; });
     var w = toValue(INP.workHours, false), r = toValue(INP.restHours, false);
@@ -532,6 +628,8 @@
         gmoRatio: { machines: inputs.gmoMachines, people: inputs.gmoPeople },
         plasticHours: mt ? mt.plastic : null,
         plasticRatio: { machines: inputs.plasticMachines, people: inputs.plasticPeople },
+        gmoMax: inputs.gmoMaxMachines,
+        plasticMax: inputs.plasticMaxMachines,
         laborHours: lt || null
       });
       return wb;
