@@ -1,42 +1,18 @@
 /*
- * 第 7 步：總表（Dipping_Milling）
- *   在活頁簿裡新增「總表」工作表，建立表格的格式、文字、框線，並填入使用者在畫面上輸入的數值：
- *     工作天數           各月輸入（不會記住）
+ * 第 7 步：總表（Coating：一般鍍膜）
+ *   在活頁簿裡新增「光鍍人力需求」工作表，版面照使用者給的範本（B 到 K 行、第 2 到 49 列，
+ *   設定在 js/excel-io.js 的 DM_REPORT、DM_ROWS），並填入：
+ *     工作天數 - 常日班、做四休二   各月輸入（不會記住）
  *     工作時間           輸入工作時數、休息時數（小時，六個月共用），填 =(工作時數-休息時數)*60（分鐘）
  *     機台每日可動工時   各月輸入小時，填 =小時*60（分鐘）
- *     機台每日可動工時、工作班別數、出勤率、作業效率   各月輸入，有「套用到全部月份」按鈕（第一個月的值填到後面每個月）
- *     MPS Milling、Dipping   公式：參照 MPS 工作表該段（Milling = Cutting）第 2 步的 Total 列，例如 ='MPS'!E10；
- *                            沒有 Total 列就直接加總該段（當月也不加 WIP）
- *     Milling站
- *       機台需求工時   公式：參照 MPS 工作表 Milling 段「機台需求工時」第 5 步的 Total 列，例如 ='MPS'!P10
+ *     機台每日可動工時、班別數、出勤率、作業效率   各月輸入，有「套用到全部月份」按鈕
+ *     MPS GMO、Plastic   公式：參照 MPS 工作表該段（GMO = 第 1 步的 Glass 段）第 2 步的 Total 列，例如 ='MPS'!E10；
+ *                        沒有 Total 列就直接加總該段（當月也不加 WIP）
+ *     GMO 站、Plastic 站
+ *       機台需求工時   公式：參照 MPS 工作表該段「機台需求工時」第 5 步的 Total 列，例如 ='MPS'!P10
  *       人機比         輸入機台數、人員數（六個月共用），填 =機台數/人員數；Notes 寫「1 人顧 4 機」
- *       開機數         =MIN(ROUNDUP(機台需求工時/((工作天數+加班天數 - Milling)*機台每日可動工時),1),8)
- *                      最多 8 台（Dipping站最多 4 台），算出來超過就顯示上限
- *       顧機人數       =ROUNDUP(開機數/人機比,1)
- *       需求顧機人數   =ROUNDUP(顧機人數*工作班別數/出勤率/作業效率,0)
- *     Dipping站     同上（參照 Dipping 段的 Total 列、自己的機台數和人員數、加班天數 - Dipping）
- *     目檢站 需求工時 - Milling、- Dipping   公式：參照 MPS 工作表該段「目檢需求工時」第 5 步的 Total 列
- *     目檢站 需求人力 - Milling、- Dipping
- *       =ROUNDUP(需求工時/工作時間/工作班別數/(工作天數+加班天數 - 目檢)/出勤率/作業效率,1)
- *     需求人數 - 目檢   =ROUNDUP(需求人力 - Milling*工作班別數+需求人力 - Dipping*工作班別數,1)
- *     總需求人力       =需求顧機人數 - Milling+需求顧機人數 - dipping+需求人數 - 目檢
- *     總現有人力       =現有人力 Milling+Dipping（現有人力兩列之後再補上）
- *     人力需求差異     =總現有人力-總需求人力
- *   其他格的內容（公式）之後再一項一項補上。
- *
- *   版面（B 到 K 行、第 2 到 34 列，設定在 js/excel-io.js 的 DM_REPORT、DM_ROWS）：
- *     第 2 列      表頭：B:C 合併畫斜線；D 是 Unit；E 到 J 是六個月；K 是 Notes（深藍底白字）
- *     第 3–8 列    工作天數、工作時間、機台每日可動工時、工作班別數、出勤率、作業效率
- *     第 9–10 列   MPS：Milling、Dipping（淺藍底）
- *     第 11–16 列  Milling站：機台需求工時、人機比、開機數、顧機人數；加班天數 - Milling；需求顧機人數 - Milling（淺綠底）
- *     第 17–22 列  Dipping站：同上；加班天數 - Dipping；需求顧機人數 - dipping（淺紫底）
- *     第 23–28 列  目檢站：需求工時 - Milling、需求工時 - Dipping（min/月）、需求人力 - Milling、需求人力 - Dipping（人/班）；
- *                  加班天數 - 目檢；需求人數 - 目檢（淺褐底）
- *     第 29 列     總需求人力（淺橘底）
- *     第 30–31 列  現有人力：Milling、Dipping
- *     第 32 列     總現有人力（淺橘底，下面粗線）
- *     第 33 列     人力需求差異
- *     第 34 列     Loading Rate（淺橘底）
+ *     目檢站 需求工時 - GMO、- Plastic   公式：參照 MPS 工作表該段「目檢需求工時」第 5 步的 Total 列
+ *   其他格（開機數、加班天數、需求操機人員、共用操機人員、Loading Rate、需求／現有人力…）之後再一項一項補上。
  *
  *   月份表頭用公式參照 MPS 工作表「機台需求工時」那一塊的月份（第 5 步輸入的），例如 ='MPS'!P3。
  *
@@ -59,7 +35,7 @@
   var SHEET_NAME = R.sheet;
   var MONTH_TITLE = XIO.DEMAND_TITLES.machine;      // 月份從「機台需求工時」那一塊抓
   var SUFFIX = '_總表';
-  var EXTRA = ['P003', '人力', SHEET_NAME, 'RMA人力需求'];
+  var EXTRA = ['P003', '人力', SHEET_NAME, '總表', 'RMA人力需求'];
 
   var S = {
     upload: null,         // 上傳的第 6 步檔案 { name, buffer, sheets }
@@ -71,16 +47,17 @@
   /* ---------- 使用者輸入的數值 ---------- */
   // 每個月一格的列。percent：輸入的是 %（95 代表 95%）；copy：後面有「套用到全部月份」按鈕；remember：記在瀏覽器裡
   var GRID = [
-    { key: 'workDays', label: '工作天數', unit: '天', remember: false },
+    { key: 'workDaysDay', label: '工作天數 - 常日班', unit: '天', remember: false },
+    { key: 'workDaysShift', label: '工作天數 - 做四休二', unit: '天', remember: false },
     { key: 'machineHours', label: '機台每日可動工時', unit: '小時', remember: true, copy: true },
-    { key: 'shifts', label: '工作班別數', unit: '班', remember: true, copy: true },
+    { key: 'shifts', label: '班別數', unit: '班/天', remember: true, copy: true },
     { key: 'attendance', label: '出勤率', unit: '%', remember: true, copy: true, percent: true },
     { key: 'efficiency', label: '作業效率', unit: '%', remember: true, copy: true, percent: true }
   ];
   // 人機比：每一站輸入一組機台數、人員數（六個月共用）
   var STATIONS = [
-    { key: 'cutting', label: 'Milling站', machines: 'millMachines', people: 'millPeople', id: 'mill' },
-    { key: 'dipping', label: 'Dipping站', machines: 'dipMachines', people: 'dipPeople', id: 'dip' }
+    { key: 'glass', label: 'GMO 站', name: 'GMO', machines: 'gmoMachines', people: 'gmoPeople', id: 'gmo' },
+    { key: 'plastic', label: 'Plastic 站', name: 'Plastic', machines: 'plasticMachines', people: 'plasticPeople', id: 'pla' }
   ];
   var INPUT_KEY = 'step7';             // 共用設定的組名（IEApp.settings）
   var INP = loadInputs();       // { workDays: ['', …], machineHours: [...], …, workHours: '', restHours: '' }（輸入框的文字）
@@ -248,13 +225,13 @@
     return { monthCols: months };
   }
 
-  // 總表 MPS 那兩列的公式（Milling = Cutting 那一段、Dipping）
+  // 總表 MPS 那兩列的公式（GMO = 第 1 步的 Glass 段、Plastic）
   function mpsFormulas(main, src) {
     var cols = mpsColumns();
     return XIO.dmMpsFormulas(main, { headerEnd: dataStartRow(src) - 1, monthCols: cols.monthCols });
   }
 
-  // Milling站、Dipping站 機台需求工時的公式（參照 MPS 工作表機台需求工時那一塊各段的 Total 列）
+  // GMO 站、Plastic 站 機台需求工時的公式（參照 MPS 工作表機台需求工時那一塊各段的 Total 列）
   function machineTotals(main, src) {
     return XIO.dmBlockTotalFormulas(main, { headerEnd: dataStartRow(src) - 1, title: MONTH_TITLE, months: R.months });
   }
@@ -333,7 +310,7 @@
 
     panel.appendChild(h('div', { class: 'step-head' },
       h('h1', { text: '總表' }),
-      h('p', { text: '在同一個檔案裡新增「總表」工作表：MPS、Milling站、Dipping站、目檢站、總需求人力、現有人力、人力需求差異、Loading Rate。月份表頭會參照 MPS 工作表「機台需求工時」的月份。這一步先填工作天數、工作時間、機台每日可動工時、工作班別數、出勤率、作業效率、MPS 的兩列，以及 Milling站、Dipping站的機台需求工時、人機比、開機數、顧機人數；其他格之後再補上。' })));
+      h('p', { text: '在同一個檔案裡新增「光鍍人力需求」工作表（一般鍍膜）：MPS、GMO 站、Plastic 站、共用操機人員、目檢站、需求人力、現有人力、人力需求差異、Loading Rate。月份表頭會參照 MPS 工作表「機台需求工時」的月份。這一步先填工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站的機台需求工時、人機比，以及目檢站的需求工時；其他格之後再補上。GMO 是第 1 步的 Glass 那一段。' })));
 
     panel.appendChild(h('ol', { class: 'tasks' },
       h('li', { class: 'task' },
@@ -351,11 +328,11 @@
       h('li', { class: 'task' },
         h('h2', { text: '各月的數值' }),
         buildInputGrid(),
-        h('p', { class: 'hint', text: '出勤率、作業效率輸入 95 或 95% 都代表 95%。機台每日可動工時、工作班別數、出勤率、作業效率只要填第一個月，再按「套用到全部月份」。機台每日可動工時輸入小時，總表會換算成分鐘（例如 =22*60）。工作天數每個月不同，不會記住；其他會記住上次輸入的值。沒填的格子在總表留空白。' })),
+        h('p', { class: 'hint', text: '出勤率、作業效率輸入 95 或 95% 都代表 95%。機台每日可動工時、班別數、出勤率、作業效率只要填第一個月，再按「套用到全部月份」。機台每日可動工時輸入小時，總表會換算成分鐘（例如 =22*60）。工作天數每個月不同，不會記住；其他會記住上次輸入的值。沒填的格子在總表留空白。' })),
       h('li', { class: 'task' },
         h('h2', { text: '人機比' }),
         ratioRows,
-        h('p', { class: 'hint', text: '每一站一組，六個月共用。總表的人機比填公式 =機台數/人員數，Notes 寫「幾人顧幾機」。開機數 =ROUNDUP(機台需求工時/((工作天數+該站的加班天數)*機台每日可動工時),1)，超過上限時顯示上限（Milling站 8、Dipping站 4），顧機人數 =ROUNDUP(開機數/人機比,1)，都會自動填公式。會記住上次輸入的值。' })),
+        h('p', { class: 'hint', text: '每一站一組，六個月共用。總表的人機比填公式 =機台數/人員數，Notes 寫「幾人顧幾機」。會記住上次輸入的值。' })),
       h('li', { class: 'task' },
         h('h2', { text: '匯出' }),
         els.summary, els.notes, els.layout,
@@ -449,7 +426,7 @@
 
     var refs = work.refs;
     var first = XIO.numToCol(R.monthCol), last = XIO.numToCol(R.monthCol + R.months - 1);
-    setSummary('會新增「' + SHEET_NAME + '」工作表（B 到 K 行、第 ' + R.headRow + ' 到 ' + R.lastRow + ' 列）。' +
+    setSummary('會新增「' + SHEET_NAME + '」工作表（B 到 K 行、第 ' + R.titleRow + ' 到 ' + R.lastRow + ' 列）。' +
       (refs ? '月份表頭 ' + first + R.headRow + ' 到 ' + last + R.headRow + ' 參照 ' + work.main.name + ' 工作表「' + MONTH_TITLE + '」的月份：' +
         refs.map(function (x) { return x.text || '（空白）'; }).join('、') + '。' : ''), false, !refs);
     if (!refs) {
@@ -457,14 +434,14 @@
         work.main.name + ' 工作表找不到「' + MONTH_TITLE + '」（第 5 步），月份表頭先留空白。'));
     }
     var mps = work.mps;
-    var mpsText = [['cutting', 'Milling'], ['dipping', 'Dipping']].map(function (p) {
+    var mpsText = [['glass', 'GMO'], ['plastic', 'Plastic']].map(function (p) {
       var list = mps && mps[p[0]];
       if (!list) return p[1] + '：找不到';
       return p[1] + '：' + (list[0].fromTotal ? '參照第 2 步的 Total 列' : '直接加總該段') + '，例如 =' + list[0].formula;
     });
-    els.notes.appendChild(h('li', { class: mps && mps.cutting && mps.dipping ? null : 'is-warn' },
+    els.notes.appendChild(h('li', { class: mps && mps.glass && mps.plastic ? null : 'is-warn' },
       'MPS 的兩列（公式）：' + mpsText.join('；') + '。' +
-      (mps && mps.cutting && mps.dipping ? '' : '找不到的那一列先留空白（MPS 工作表裡要有第 1 步的「Cutting（…）」「Dipping（…）」標題和料號）。')));
+      (mps && mps.glass && mps.plastic ? '' : '找不到的那一列先留空白（MPS 工作表裡要有第 1 步的「Glass（…）」「Plastic（…）」標題和料號；GMO 用的是 Glass 那一段）。')));
 
     var mt = work.machineTotals;
     STATIONS.forEach(function (st) {
@@ -474,20 +451,20 @@
           (list[0].fromTotal ? '參照第 5 步的 Total 列' : '直接加總該段') + '，例如 =' + list[0].formula + '。'));
       } else {
         els.notes.appendChild(h('li', { class: 'is-warn' },
-          'MPS 工作表找不到' + st.label.replace('站', '') + '段的「' + MONTH_TITLE + '」（第 5 步），' + st.label + '的機台需求工時先留空白。'));
+          'MPS 工作表找不到 ' + (st.key === 'glass' ? 'Glass' : 'Plastic') + ' 段的「' + MONTH_TITLE + '」（第 5 步），' + st.label + '的機台需求工時先留空白。'));
       }
     });
 
     var lt = work.laborTotals;
     STATIONS.forEach(function (st) {
       var list = lt && lt[st.key];
-      var name = '目檢站 需求工時 - ' + st.label.replace('站', '');
+      var name = '目檢站 需求工時 - ' + st.name;
       if (list) {
         els.notes.appendChild(h('li', null, name + '（公式）：' +
           (list[0].fromTotal ? '參照第 5 步的 Total 列' : '直接加總該段') + '，例如 =' + list[0].formula + '。'));
       } else {
         els.notes.appendChild(h('li', { class: 'is-warn' },
-          'MPS 工作表找不到' + st.label.replace('站', '') + '段的「' + LABOR_TITLE + '」（第 5 步），' + name + '先留空白。'));
+          'MPS 工作表找不到 ' + (st.key === 'glass' ? 'Glass' : 'Plastic') + ' 段的「' + LABOR_TITLE + '」（第 5 步），' + name + '先留空白。'));
       }
     });
 
@@ -501,7 +478,7 @@
         '還沒填：' + read.blank.slice(0, 12).join('、') + (read.blank.length > 12 ? ' …等 ' + read.blank.length + ' 格' : '') +
         '。沒填的格子在總表留空白，一樣可以匯出。'));
     }
-    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、工作班別數、出勤率、作業效率、MPS 的兩列、Milling站和 Dipping站（機台需求工時、人機比、開機數、顧機人數、需求顧機人數）、目檢站（需求工時、需求人力）、需求人數 - 目檢、總需求人力、總現有人力、人力需求差異；現有人力、加班天數、Loading Rate 之後再補上。'));
+    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站的機台需求工時和人機比、目檢站的需求工時；其他格（開機數、加班天數、需求操機人員、共用操機人員、Loading Rate、需求／現有人力等）先留空白，之後再補上。'));
 
     var inputs = read.values;
     els.exportBtn.disabled = false;
@@ -551,10 +528,10 @@
       var lt = main ? laborTotals(main, src) : null;
       XIO.addDmReportSheet(wb, {
         monthRefs: refs, inputs: inputs, mps: main ? mpsFormulas(main, src) : null,
-        millingHours: mt ? mt.cutting : null,
-        millingRatio: { machines: inputs.millMachines, people: inputs.millPeople },
-        dippingHours: mt ? mt.dipping : null,
-        dippingRatio: { machines: inputs.dipMachines, people: inputs.dipPeople },
+        gmoHours: mt ? mt.glass : null,
+        gmoRatio: { machines: inputs.gmoMachines, people: inputs.gmoPeople },
+        plasticHours: mt ? mt.plastic : null,
+        plasticRatio: { machines: inputs.plasticMachines, people: inputs.plasticPeople },
         laborHours: lt || null
       });
       return wb;

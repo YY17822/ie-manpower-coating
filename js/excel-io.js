@@ -3075,77 +3075,106 @@
 
   function sameSheetName(a, b) { return String(a).toLowerCase() === String(b).toLowerCase(); }
 
-  /* ---------- 總表（Dipping_Milling 版） ---------- */
+  /* ---------- 總表（Coating 版：一般鍍膜） ---------- */
 
   /*
-   * 版面：B 到 K 行、第 2 到 34 列。
+   * 版面照使用者給的範本（「光鍍人力需求」工作表）：B 到 K 行、第 2 到 49 列。
+   *   第 2 列      大標題「一般鍍膜」，B:K 合併置中，外框粗線
+   *   第 4 列      表頭：B:C 合併畫斜線；D 是 Unit；E 到 J 是六個月；K 是 Notes（藍底白字）
    *   B、C：項目（沒有子項目時 B:C 合併）；D：單位；E 到 J：六個月；K：Notes
-   *   第 2 列表頭：B:C 合併畫斜線，深藍底白字
-   * 各列的 key 給之後填公式用。fill 是整列（B 到 K）的底色。
-   * 目前只建立格式、文字、框線；各格的數值之後再一項一項補上。
+   * 各列的 key 給之後填公式用；fill 是整列（B 到 K）的底色；fmt 是 E 到 J 的數字格式。
+   * GMO = 第 1 步的 Glass 那一段（GMO-Coating + Filter&UVIR-Coating）。
    */
   var DM_REPORT = {
-    sheet: '總表',
+    sheet: '光鍍人力需求', title: '一般鍍膜',
     labelCol: 2, subCol: 3, unitCol: 4, monthCol: 5, months: 6, noteCol: 11,
-    headRow: 2, firstRow: 3, lastRow: 34
+    titleRow: 2, headRow: 4, firstRow: 5, lastRow: 49
   };
+  var OLD_REPORT_SHEETS = ['總表'];       // 舊版的總表名稱，重做這一步時一起換掉
   var DM_FILL = {
-    head: 'FF3D5D8F',      // 表頭深藍
-    mps: 'FFDAEEF3',       // MPS 淺藍
-    milling: 'FFEBF1DE',   // Milling 站 淺綠
-    dipping: 'FFE4DFEC',   // Dipping 站 淺紫
+    head: 'FF2E75B6',      // 表頭藍
+    mps: 'FFDCEEF3',       // MPS 淺藍
+    gmo: 'FFEBF1DE',       // GMO 站 淺綠
+    plastic: 'FFE4DFEC',   // Plastic 站 淺紫
+    machineLoad: 'FFD0CECE', // 機台 Loading Rate 淺灰
     labor: 'FFDDD9C4',     // 目檢 淺褐
-    total: 'FFFCD5B4'      // 總需求人力、總現有人力、Loading Rate 淺橘
+    total: 'FFFCD5B4'      // 總需求人力、總現有人力、總人力 Loading Rate 淺橘
   };
-  // b：B 行（或 B:C 合併）的文字；c：C 行的子項目；u：單位
+  var FMT = {
+    int: '#,##0_);[Red](#,##0)',
+    min: '#,##0_ ',
+    d1: '0.0_ ',
+    d2: '0.00_ ',
+    i0: '0_ ',
+    pct0: '0%',
+    pct1: '0.0%',
+    acc: '_-* #,##0_-;\\-* #,##0_-;_-* "-"??_-;_-@_-',
+    gap: '0.0_ ;[Red]\\-0.0\\ '
+  };
+  // b：B 行（B:C 合併）的文字；c：C 行的子項目；u：單位；blue：項目名稱藍字；hidden：隱藏的列
   var DM_ROWS = [
-    { r: 3, key: 'workDays', b: '工作天數', u: 'day' },
-    { r: 4, key: 'workMinutes', b: '工作時間', u: 'min/班' },
-    { r: 5, key: 'machineMinutes', b: '機台每日可動工時', u: 'min/天' },
-    { r: 6, key: 'shifts', b: '工作班別數', u: '班' },
-    { r: 7, key: 'attendance', b: '出勤率', u: '%' },
-    { r: 8, key: 'efficiency', b: '作業效率', u: '%' },
-    { r: 9, key: 'mpsMilling', c: 'Milling', fill: 'mps' },
-    { r: 10, key: 'mpsDipping', c: 'Dipping', fill: 'mps' },
-    { r: 11, key: 'millingHours', c: '機台需求工時', u: 'min', fill: 'milling' },
-    { r: 12, key: 'millingRatio', c: '人機比', u: '台/人', fill: 'milling' },
-    { r: 13, key: 'millingMachines', c: '開機數', u: '台/人', fill: 'milling' },
-    { r: 14, key: 'millingTenders', c: '顧機人數', u: '人/班', fill: 'milling' },
-    { r: 15, key: 'millingOtDays', b: '加班天數 - Milling', u: '天', fill: 'milling' },
-    { r: 16, key: 'millingNeed', b: '需求顧機人數 - Milling', u: '人/天', fill: 'milling' },
-    { r: 17, key: 'dippingHours', c: '機台需求工時', u: 'min', fill: 'dipping' },
-    { r: 18, key: 'dippingRatio', c: '人機比', u: '台/人', fill: 'dipping' },
-    { r: 19, key: 'dippingMachines', c: '開機數', u: '台/人', fill: 'dipping' },
-    { r: 20, key: 'dippingTenders', c: '顧機人數', u: '人/班', fill: 'dipping' },
-    { r: 21, key: 'dippingOtDays', b: '加班天數 - Dipping', u: '天', fill: 'dipping' },
-    { r: 22, key: 'dippingNeed', b: '需求顧機人數 - dipping', u: '人/天', fill: 'dipping' },
-    { r: 23, key: 'laborMinMilling', c: '需求工時 - Milling', fill: 'labor' },
-    { r: 24, key: 'laborMinDipping', c: '需求工時 - Dipping', fill: 'labor' },
-    { r: 25, key: 'laborPplMilling', c: '需求人力 - Milling', fill: 'labor' },
-    { r: 26, key: 'laborPplDipping', c: '需求人力 - Dipping', fill: 'labor' },
-    { r: 27, key: 'laborOtDays', b: '加班天數 - 目檢', u: '天', fill: 'labor' },
-    { r: 28, key: 'laborNeed', b: '需求人數 - 目檢', u: '人/天', fill: 'labor' },
-    { r: 29, key: 'needTotal', b: '總需求人力', u: '人/天', fill: 'total' },
-    { r: 30, key: 'haveMilling', c: 'Milling' },
-    { r: 31, key: 'haveDipping', c: 'Dipping' },
-    { r: 32, key: 'haveTotal', b: '總現有人力', u: '人/天', fill: 'total', thickBottom: true },
-    { r: 33, key: 'gap', b: '人力需求差異', u: '人/天' },
-    { r: 34, key: 'loading', b: 'Loading Rate', u: '%', fill: 'total' }
+    { r: 5, key: 'workDaysDay', c: '常日班', fmt: 'General' },
+    { r: 6, key: 'workDaysShift', c: '做四休二', fmt: 'General' },
+    { r: 7, key: 'workMinutes', b: '工作時間', u: 'min/班', fmt: 'General' },
+    { r: 8, key: 'machineMinutes', b: '機台每日可動工時', u: 'min/天', fmt: FMT.min },
+    { r: 9, key: 'shifts', b: '班別數', u: '班/天', fmt: 'General' },
+    { r: 10, key: 'attendance', b: '出勤率', u: '%', fmt: FMT.pct0 },
+    { r: 11, key: 'efficiency', b: '作業效率', u: '%', fmt: FMT.pct0 },
+    { r: 12, key: 'mpsGmo', c: 'GMO', fill: 'mps', fmt: FMT.int },
+    { r: 13, key: 'mpsPlastic', c: 'Plastic', fill: 'mps', fmt: FMT.int },
+    { r: 14, key: 'gmoHours', c: '機台需求工時', u: 'min/月', fill: 'gmo', fmt: FMT.int },
+    { r: 15, key: 'gmoRatio', c: '人機比', u: '台/人', fill: 'gmo', fmt: FMT.d1 },
+    { r: 16, key: 'gmoMachines', c: '開機數', u: '台/班', fill: 'gmo', fmt: FMT.d1 },
+    { r: 17, key: 'gmoOtDays', c: '加班天數', u: '天/月', fill: 'gmo', fmt: FMT.d2 },
+    { r: 18, key: 'gmoNeed', c: '需求操機人員', u: '人/天', fill: 'gmo', fmt: FMT.d1 },
+    { r: 19, key: 'plasticHours', c: '機台需求工時', u: 'min/月', fill: 'plastic', fmt: FMT.int },
+    { r: 20, key: 'plasticRatio', c: '人機比', u: '台/人', fill: 'plastic', fmt: FMT.d1 },
+    { r: 21, key: 'plasticMachines', c: '開機數', u: '台/班', fill: 'plastic', fmt: FMT.d1 },
+    { r: 22, key: 'plasticOtDays', c: '加班天數', u: '天/月', fill: 'plastic', fmt: FMT.d2 },
+    { r: 23, key: 'plasticNeed', c: '需求操機人員', u: '人/天', fill: 'plastic', fmt: FMT.d1 },
+    { r: 24, key: 'sharedWash', c: '清洗', u: '人/天', fmt: FMT.d1 },
+    { r: 25, key: 'sharedSpectrum', c: '光譜檢測', u: '人/天', fmt: FMT.d1 },
+    { r: 26, key: 'sharedClean', c: '大清機', u: '人/天', fmt: FMT.d1 },
+    { r: 27, key: 'needOperators', b: '需求操機人員(GMO+Plastic+共用)', u: '人/天', fmt: FMT.d1 },
+    { r: 28, key: 'haveOperators', b: '現有操機人員', u: '人/天', fmt: FMT.i0 },
+    { r: 29, key: 'operatorLoading', b: '操機人力 Loading Rate', u: '%', fmt: FMT.pct1, blue: true },
+    { r: 30, key: 'machineLoadGmo', c: 'GMO', u: '%', fill: 'machineLoad', fmt: FMT.pct0, hidden: true },
+    { r: 31, key: 'machineLoadPlastic', c: 'Plastic', u: '%', fill: 'machineLoad', fmt: FMT.pct0, hidden: true },
+    { r: 32, key: 'laborMinGmo', c: '需求工時 - GMO', fill: 'labor', fmt: FMT.acc },
+    { r: 33, key: 'laborMinPlastic', c: '需求工時 - Plastic', fill: 'labor', fmt: FMT.acc },
+    { r: 34, key: 'laborOtGmo', c: '加班天數 - GMO', fill: 'labor', fmt: FMT.acc },
+    { r: 35, key: 'laborOtPlastic', c: '加班天數 - Plastic', fill: 'labor', fmt: FMT.acc },
+    { r: 36, key: 'laborPplGmo', c: '需求人力 - GMO', fill: 'labor', fmt: FMT.d1 },
+    { r: 37, key: 'laborPplPlastic', c: '需求人力 - Plastic', fill: 'labor', fmt: FMT.d1 },
+    { r: 38, key: 'laborPplPrep', c: '需求人力 - 備料', fill: 'labor', fmt: FMT.d1 },
+    { r: 39, key: 'needInspectors', b: '需求目檢人員', u: '人/天', fill: 'labor', fmt: FMT.d1 },
+    { r: 40, key: 'haveInspectors', b: '現有目檢人員', u: '人/天', fill: 'labor', fmt: FMT.i0 },
+    { r: 41, key: 'inspectorLoading', b: '目檢人力 Loading Rate', u: '%', fill: 'labor', fmt: FMT.pct1, blue: true },
+    { r: 42, key: 'needOnline', b: '需求人力（On Line）(操機+共用+目檢)', u: '人/天', fmt: FMT.d1 },
+    { r: 43, key: 'needOffline', b: '需求人力（Off Line）', u: '人/天', fmt: FMT.d1 },
+    { r: 44, key: 'needTotal', b: '總需求人力', u: '人天', fill: 'total', fmt: FMT.d1 },
+    { r: 45, key: 'haveOnline', b: '現有人力（On Line）', u: '人/天', fmt: FMT.i0 },
+    { r: 46, key: 'haveOffline', b: '現有人力（Off Line）', u: '人/天', fmt: FMT.i0 },
+    { r: 47, key: 'haveTotal', b: '總現有人力', u: '人/天', fill: 'total', fmt: FMT.i0 },
+    { r: 48, key: 'gap', b: '人力需求差異', u: '人/天', fmt: FMT.gap },
+    { r: 49, key: 'loading', b: '總人力 Loading Rate', u: '%', fill: 'total', fmt: FMT.pct1 }
   ];
-  // B 行上下合併的群組標籤（align: 'center' 置中；'left' 靠左、垂直置中；'top' 靠左上）
+  // B 行上下合併的群組標籤（靠左、垂直置中）
   var DM_GROUPS = [
-    { top: 9, bottom: 10, text: 'MPS', align: 'center' },
-    { top: 11, bottom: 14, text: 'Milling站', align: 'center' },
-    { top: 17, bottom: 20, text: 'Dipping站', align: 'center' },
-    { top: 23, bottom: 26, text: '目檢站', align: 'center' },
-    { top: 30, bottom: 31, text: '現有人力', align: 'center' }
+    { top: 5, bottom: 6, text: '工作天數' },
+    { top: 12, bottom: 13, text: 'MPS', fill: 'mps' },
+    { top: 14, bottom: 18, text: 'GMO 站', fill: 'gmo' },
+    { top: 19, bottom: 23, text: 'Plastic 站', fill: 'plastic' },
+    { top: 24, bottom: 26, text: '共用操機人員', wrap: true },
+    { top: 30, bottom: 31, text: '機台 Loading Rate', fill: 'machineLoad' },
+    { top: 32, bottom: 38, text: '目檢站', fill: 'labor' }
   ];
   // D 行（單位）上下合併
   var DM_UNIT_MERGES = [
-    { top: 9, bottom: 10, text: 'PCS' },
-    { top: 23, bottom: 24, text: 'min/月' },
-    { top: 25, bottom: 26, text: '人/班' },
-    { top: 30, bottom: 31, text: '人/天' }
+    { top: 5, bottom: 6, text: 'day' },
+    { top: 12, bottom: 13, text: 'pcs/月' },
+    { top: 32, bottom: 35, text: 'min/月' },
+    { top: 36, bottom: 38, text: '人/天' }
   ];
 
   /*
@@ -3153,10 +3182,10 @@
    *   有第 5 步加的 Total 列（該段最後一列之後空一列、這一塊左邊那一行寫 Total）：直接參照，例如 ='MPS'!P10
    *   沒有：直接加總該段，例如 =SUM('MPS'!P6:P8)
    * o: { headerEnd, title, months }
-   * 回傳 { found, cutting: [{ formula, result, fromTotal }…] 或 null, dipping: 同上 }
+   * 回傳 { found, plastic: [{ formula, result, fromTotal }…] 或 null, glass: 同上 }
    */
   function dmBlockTotalFormulas(main, o) {
-    var out = { found: false, cutting: null, dipping: null };
+    var out = { found: false, plastic: null, glass: null };
     var block = findBlock(main, o.headerEnd, o.title);
     if (!block) return out;
     out.found = true;
@@ -3186,15 +3215,15 @@
   }
 
   /*
-   * 總表 MPS 那兩列（Milling = 第 1 步的 Cutting、Dipping）要填的公式：該段各月的 MPS 合計。
+   * 總表 MPS 那兩列（GMO = 第 1 步的 Glass、Plastic）要填的公式：該段各月的 MPS 合計。
    *   有第 2 步的 Total 列（該段最後一列之後空一列、標籤是 Total）：直接參照它，例如 ='MPS'!E10
    *   沒有：直接加總該段，例如 =SUM('MPS'!E6:E8)（當月也不加 WIP）
    * o: { headerEnd, monthCols }
-   * 回傳 { found, cutting: [{ formula, result, fromTotal }…6] 或 null, dipping: 同上, sections }
+   * 回傳 { found, plastic: [{ formula, result, fromTotal }…6] 或 null, glass: 同上, sections }
    */
   function dmMpsFormulas(main, o) {
     var plan = planSectionTotals(main, { headerEnd: o.headerEnd, keyCol: 1, monthCols: o.monthCols });
-    var out = { found: plan.found, cutting: null, dipping: null, sections: plan.sections };
+    var out = { found: plan.found, plastic: null, glass: null, sections: plan.sections };
     if (!plan.found) return out;
     var ref = sheetRef(main.name);
     plan.sections.forEach(function (s) {
@@ -3219,60 +3248,74 @@
   }
 
   /*
-   * 在活頁簿裡建立 Dipping_Milling 版的總表（已經有同名工作表就換掉）。
-   * o.monthRefs  [{ sheet, col, row, text }] 月份表頭要參照的儲存格（MPS 的機台需求工時月份）；沒有就留空白
-   * o.mps        dmMpsFormulas() 的結果：MPS Milling、Dipping 兩列各月的公式
-   * o.millingHours  dmBlockTotalFormulas() 的 cutting：Milling站 機台需求工時各月的公式
-   * o.millingRatio  { machines, people } Milling站 人機比的機台數、人員數
-   * o.dippingHours、o.dippingRatio   Dipping站，同上
-   * o.laborHours  dmBlockTotalFormulas()（目檢需求工時）的結果：目檢站 需求工時 - Milling、- Dipping 兩列
-   * o.inputs     使用者在畫面上輸入的值（沒填的是 null，那一格留空白）：
-   *   workDays      [6 個月] 工作天數
+   * 在活頁簿裡建立 Coating 版的總表「光鍍人力需求」（已經有同名、或舊版「總表」工作表就換掉）。
+   * o.monthRefs     [{ sheet, col, row, text }] 月份表頭要參照的儲存格（MPS 的機台需求工時月份）；沒有就留空白
+   * o.mps           dmMpsFormulas() 的結果：MPS GMO（= Glass 段）、Plastic 兩列各月的公式
+   * o.gmoHours      dmBlockTotalFormulas() 的 glass：GMO 站 機台需求工時各月的公式
+   * o.gmoRatio      { machines, people } GMO 站 人機比的機台數、人員數
+   * o.plasticHours、o.plasticRatio   Plastic 站，同上
+   * o.laborHours    dmBlockTotalFormulas()（目檢需求工時）的結果：目檢站 需求工時 - GMO、- Plastic 兩列
+   * o.inputs        使用者在畫面上輸入的值（沒填的是 null，那一格留空白）：
+   *   workDaysDay、workDaysShift   [6 個月] 工作天數 常日班、做四休二
    *   workHours、restHours   工作時數、休息時數（小時，六個月共用）→ 工作時間 =(工作時數-休息時數)*60（分鐘）
    *   machineHours  [6 個月] 機台每日可動工時（小時）→ =小時*60（分鐘）
-   *   shifts        [6 個月] 工作班別數
+   *   shifts        [6 個月] 班別數
    *   attendance、efficiency  [6 個月] 出勤率、作業效率（小數，0.95 = 95%）
+   * 其他列（開機數、加班天數、需求操機人員、共用操機人員、Loading Rate、需求／現有人力…）先留空白，之後再補上。
    * 回傳 { worksheet, rows: { key: 列號 }, monthCol, months }
    */
   function addDmReportSheet(wb, o) {
     var R = DM_REPORT;
-    wb.worksheets.filter(function (w) { return sameSheetName(w.name, R.sheet); })
-      .forEach(function (w) { wb.removeWorksheet(w.id); });
-    var ws = wb.addWorksheet(R.sheet, { views: [{ state: 'normal', showGridLines: true }] });
+    wb.worksheets.filter(function (w) {
+      return sameSheetName(w.name, R.sheet) || OLD_REPORT_SHEETS.some(function (n) { return sameSheetName(w.name, n); });
+    }).forEach(function (w) { wb.removeWorksheet(w.id); });
+    var ws = wb.addWorksheet(R.sheet, { views: [{ state: 'normal', showGridLines: false, zoomScale: 69, zoomScaleNormal: 69 }] });
     var lastMonth = R.monthCol + R.months - 1;
     var THIN = { style: 'thin', color: { argb: 'FF000000' } };
     var THICK = { style: 'medium', color: { argb: 'FF000000' } };
-    function font(extra) { return Object.assign({ name: REPORT_FONT, size: 11 }, extra || {}); }
+    var FONT = 'Calibri';
+    function font(extra) { return Object.assign({ name: FONT, size: 12, color: { argb: 'FF000000' } }, extra || {}); }
     var LEFT = { horizontal: 'left', vertical: 'middle' };
+    var LEFT_WRAP = { horizontal: 'left', vertical: 'middle', wrapText: true };
     var CENTER = { horizontal: 'center', vertical: 'middle' };
-    var TOP_LEFT = { horizontal: 'left', vertical: 'top' };
-    var thickBottomRows = {};
-    DM_ROWS.forEach(function (x) { if (x.thickBottom) thickBottomRows[x.r] = true; });
 
     function border(r, c) {
       return {
         top: r === R.headRow ? THICK : THIN,
-        bottom: r === R.headRow || r === R.lastRow || thickBottomRows[r] ? THICK : THIN,
+        bottom: r === R.lastRow ? THICK : THIN,
         left: c === R.labelCol ? THICK : THIN,
         right: c === R.noteCol ? THICK : THIN
       };
     }
 
     // 行寬、列高
-    var widths = { 1: 3, 2: 24, 3: 20, 4: 10, 11: 40 };
-    for (var c = 1; c <= R.noteCol; c++) ws.getColumn(c).width = widths[c] || 13;
-    ws.getRow(1).height = 10;
-    ws.getRow(R.headRow).height = 24;
-    for (var r = R.firstRow; r <= R.lastRow; r++) ws.getRow(r).height = 21;
+    var widths = { 1: 5.16, 2: 24.16, 3: 19, 4: 7.5, 11: 38.33 };
+    for (var c = 1; c <= R.noteCol; c++) ws.getColumn(c).width = widths[c] || 12.66;
+    ws.getRow(1).height = 20.25;
+    ws.getRow(R.titleRow).height = 41;
+    ws.getRow(3).height = 20.25;
+    for (var r = R.headRow; r <= R.lastRow; r++) ws.getRow(r).height = r <= 41 ? 24 : 20.25;
+
+    // 大標題（B:K 合併，外框粗線）
+    for (c = R.labelCol; c <= R.noteCol; c++) {
+      ws.getCell(R.titleRow, c).style = {
+        font: { name: REPORT_FONT, size: 28, bold: true, color: { argb: 'FF000000' } },
+        fill: solid('FFFFFFFF'), alignment: CENTER,
+        border: cleanObject({ top: THICK, bottom: THICK, left: c === R.labelCol ? THICK : undefined, right: c === R.noteCol ? THICK : undefined })
+      };
+    }
+    ws.getCell(R.titleRow, R.labelCol).value = R.title;
+    ws.mergeCellsWithoutStyle(R.titleRow, R.labelCol, R.titleRow, R.noteCol);
 
     // 表頭
     for (c = R.labelCol; c <= R.noteCol; c++) {
       var b = border(R.headRow, c);
-      if (c <= R.subCol) b.diagonal = { up: false, down: true, style: 'medium', color: { argb: 'FF000000' } };
-      ws.getCell(R.headRow, c).style = {
-        font: font({ size: 12, bold: true, color: { argb: 'FFFFFFFF' } }),
-        fill: solid(DM_FILL.head), alignment: CENTER, border: b
-      };
+      if (c <= R.subCol) b.diagonal = { up: false, down: true, style: 'thin', color: { argb: 'FF000000' } };
+      ws.getCell(R.headRow, c).style = cleanObject({
+        font: font({ bold: true, color: { argb: 'FFFFFFFF' } }),
+        fill: solid(DM_FILL.head), alignment: c <= R.subCol ? LEFT : CENTER, border: b,
+        numFmt: c >= R.monthCol && c <= lastMonth ? 'mmm;@' : undefined
+      });
     }
     ws.mergeCellsWithoutStyle(R.headRow, R.labelCol, R.headRow, R.subCol);
     ws.getCell(R.headRow, R.unitCol).value = 'Unit';
@@ -3283,18 +3326,22 @@
       hc.value = ref ? { formula: sheetRef(ref.sheet) + numToCol(ref.col) + ref.row, result: ref.text || '' } : null;
     }
 
-    // 內容：每一格先給底色、框線、字型
+    // 內容：每一格先給底色、框線、字型、數字格式
     var rows = {};
     DM_ROWS.forEach(function (x) {
       rows[x.key] = x.r;
       var fill = x.fill ? solid(DM_FILL[x.fill]) : undefined;
       for (var cc = R.labelCol; cc <= R.noteCol; cc++) {
         var isLabel = cc <= R.subCol;
+        var isMonth = cc >= R.monthCol && cc <= lastMonth;
         var st = {
-          font: font(isLabel ? { bold: true } : {}),
-          alignment: cc === R.unitCol ? CENTER : (isLabel || cc === R.noteCol ? LEFT : { horizontal: 'right', vertical: 'middle' }),
+          font: isLabel ? font({ bold: true, color: { argb: x.blue && cc === R.labelCol ? 'FF0070C0' : 'FF000000' } })
+            : cc === R.unitCol ? font({ bold: true })
+            : cc === R.noteCol ? font({ size: 10 }) : font(),
+          alignment: isLabel ? (x.b && /\(/.test(x.b) ? LEFT_WRAP : LEFT) : cc === R.noteCol ? LEFT_WRAP : CENTER,
           border: border(x.r, cc)
         };
+        if (isMonth && x.fmt) st.numFmt = x.fmt;
         if (fill) st.fill = fill;
         ws.getCell(x.r, cc).style = st;
       }
@@ -3304,57 +3351,55 @@
       }
       if (x.c) ws.getCell(x.r, R.subCol).value = x.c;
       if (x.u) ws.getCell(x.r, R.unitCol).value = x.u;
+      if (x.hidden) ws.getRow(x.r).hidden = true;
     });
     DM_GROUPS.forEach(function (g) {
       var cell = ws.getCell(g.top, R.labelCol);
       cell.value = g.text;
-      cell.style = Object.assign({}, cell.style, { alignment: g.align === 'top' ? TOP_LEFT : g.align === 'left' ? LEFT : CENTER });
       ws.mergeCellsWithoutStyle(g.top, R.labelCol, g.bottom, R.labelCol);
+      cell.style = Object.assign({}, cell.style, { alignment: g.wrap ? LEFT_WRAP : LEFT });
     });
     DM_UNIT_MERGES.forEach(function (u) {
       ws.getCell(u.top, R.unitCol).value = u.text;
       ws.mergeCellsWithoutStyle(u.top, R.unitCol, u.bottom, R.unitCol);
     });
 
-    // MPS：Milling、Dipping 各月的合計（公式，由 dmMpsFormulas() 算好傳進來）
-    var mps = (o && o.mps) || {};
-    [['cutting', 'mpsMilling'], ['dipping', 'mpsDipping']].forEach(function (p) {
-      var list = mps[p[0]];
+    function put(key, mm, value) { ws.getCell(rows[key], R.monthCol + mm).value = value; }
+    function putList(key, list) {
       if (!list) return;
       for (var mm = 0; mm < R.months && mm < list.length; mm++) {
-        if (!list[mm]) continue;
-        var cell = ws.getCell(rows[p[1]], R.monthCol + mm);
-        cell.value = { formula: list[mm].formula, result: list[mm].result };
-        cell.style = Object.assign({}, cell.style, { numFmt: '#,##0' });
+        if (list[mm]) put(key, mm, { formula: list[mm].formula, result: list[mm].result });
       }
-    });
+    }
+
+    // MPS：GMO（= Glass 段）、Plastic 各月的合計（公式，由 dmMpsFormulas() 算好傳進來）
+    var mps = (o && o.mps) || {};
+    putList('mpsGmo', mps.glass);
+    putList('mpsPlastic', mps.plastic);
 
     // 使用者輸入的值
     var inp = (o && o.inputs) || {};
     function isN(v) { return typeof v === 'number' && !isNaN(v); }
     function fmtNum(v) { return String(Math.round(v * 1e6) / 1e6); }
-    function put(key, mm, value, numFmt) {
-      var cell = ws.getCell(rows[key], R.monthCol + mm);
-      cell.value = value;
-      if (numFmt) cell.style = Object.assign({}, cell.style, { numFmt: numFmt });
-    }
     for (m = 0; m < R.months; m++) {
-      var wd = inp.workDays && inp.workDays[m];
-      if (isN(wd)) put('workDays', m, wd, 'General');
+      var d1 = inp.workDaysDay && inp.workDaysDay[m];
+      if (isN(d1)) put('workDaysDay', m, d1);
+      var d2 = inp.workDaysShift && inp.workDaysShift[m];
+      if (isN(d2)) put('workDaysShift', m, d2);
       if (isN(inp.workHours) && isN(inp.restHours)) {
         put('workMinutes', m, {
           formula: '(' + fmtNum(inp.workHours) + '-' + fmtNum(inp.restHours) + ')*60',
           result: (inp.workHours - inp.restHours) * 60
-        }, '#,##0');
+        });
       }
       var mh = inp.machineHours && inp.machineHours[m];
-      if (isN(mh)) put('machineMinutes', m, { formula: fmtNum(mh) + '*60', result: mh * 60 }, '#,##0');
+      if (isN(mh)) put('machineMinutes', m, { formula: fmtNum(mh) + '*60', result: mh * 60 });
       var sh = inp.shifts && inp.shifts[m];
-      if (isN(sh)) put('shifts', m, sh, 'General');
+      if (isN(sh)) put('shifts', m, sh);
       var at = inp.attendance && inp.attendance[m];
-      if (isN(at)) put('attendance', m, at, '0.0%');
+      if (isN(at)) put('attendance', m, at);
       var ef = inp.efficiency && inp.efficiency[m];
-      if (isN(ef)) put('efficiency', m, ef, '0.0%');
+      if (isN(ef)) put('efficiency', m, ef);
     }
     if (isN(inp.workHours) && isN(inp.restHours)) {
       ws.getCell(rows.workMinutes, R.noteCol).value =
@@ -3364,81 +3409,27 @@
       ws.getCell(rows.machineMinutes, R.noteCol).value = '輸入的小時 × 60';
     }
 
-    // 目檢站 需求工時：參照 MPS 工作表該段「目檢需求工時」的 Total 列（由 dmBlockTotalFormulas() 算好傳進來）
-    var lh = (o && o.laborHours) || {};
-    [['cutting', 'laborMinMilling'], ['dipping', 'laborMinDipping']].forEach(function (p) {
-      var list = lh[p[0]];
-      if (!list) return;
-      for (var mm = 0; mm < R.months && mm < list.length; mm++) {
-        if (list[mm]) put(p[1], mm, { formula: list[mm].formula, result: list[mm].result }, '#,##0');
-      }
-    });
-
-    // Milling站、Dipping站（算法相同，各自的列）
-    //   機台需求工時：參照 MPS 工作表該段「機台需求工時」的 Total 列（由 dmBlockTotalFormulas() 算好傳進來）
-    //   人機比：=機台數/人員數（六個月共用），Notes 寫「1 人顧 4 機」
-    //   開機數：=MIN(ROUNDUP(機台需求工時/((工作天數+該站的加班天數)*機台每日可動工時),1),上限)
-    //           上限是該站的機台數上限：Milling站 8、Dipping站 4（算出來超過就顯示上限）
-    //   顧機人數：=ROUNDUP(開機數/人機比,1)
-    //   需求顧機人數：=ROUNDUP(顧機人數*工作班別數/出勤率/作業效率,0)
-    function addr(key, mm) { return numToCol(R.monthCol + mm) + rows[key]; }
+    // GMO 站、Plastic 站：機台需求工時（參照 MPS 工作表該段「機台需求工時」的 Total 列）、人機比（=機台數/人員數）
     [
-      { p: 'milling', hours: o && o.millingHours, ratio: o && o.millingRatio, maxMachines: 8 },
-      { p: 'dipping', hours: o && o.dippingHours, ratio: o && o.dippingRatio, maxMachines: 4 }
+      { p: 'gmo', hours: o && o.gmoHours, ratio: o && o.gmoRatio },
+      { p: 'plastic', hours: o && o.plasticHours, ratio: o && o.plasticRatio }
     ].forEach(function (st) {
-      var k = function (name) { return st.p + name; };     // 例如 millingHours、dippingRatio
+      putList(st.p + 'Hours', st.hours);
       var ratio = st.ratio || {};
-      var hasRatio = isN(ratio.machines) && isN(ratio.people) && ratio.people > 0;
+      if (!(isN(ratio.machines) && isN(ratio.people) && ratio.people > 0)) return;
       for (var mm = 0; mm < R.months; mm++) {
-        if (st.hours && st.hours[mm]) put(k('Hours'), mm, { formula: st.hours[mm].formula, result: st.hours[mm].result }, '#,##0');
-        if (hasRatio) {
-          put(k('Ratio'), mm, {
-            formula: fmtNum(ratio.machines) + '/' + fmtNum(ratio.people), result: ratio.machines / ratio.people
-          }, '0.0#');
-        }
-        put(k('Machines'), mm, {
-          formula: 'MIN(ROUNDUP(' + addr(k('Hours'), mm) + '/((' + addr('workDays', mm) + '+' + addr(k('OtDays'), mm) + ')*' +
-            addr('machineMinutes', mm) + '),1),' + st.maxMachines + ')'
-        }, '0.0');
-        put(k('Tenders'), mm, {
-          formula: 'ROUNDUP(' + addr(k('Machines'), mm) + '/' + addr(k('Ratio'), mm) + ',1)'
-        }, '0.0');
-        // 需求顧機人數 =ROUNDUP(顧機人數*工作班別數/出勤率/作業效率,0)
-        put(k('Need'), mm, {
-          formula: 'ROUNDUP(' + addr(k('Tenders'), mm) + '*' + addr('shifts', mm) + '/' + addr('attendance', mm) + '/' +
-            addr('efficiency', mm) + ',0)'
-        }, '0');
+        put(st.p + 'Ratio', mm, { formula: fmtNum(ratio.machines) + '/' + fmtNum(ratio.people), result: ratio.machines / ratio.people });
       }
-      if (hasRatio) {
-        ws.getCell(rows[k('Ratio')], R.noteCol).value = fmtNum(ratio.people) + ' 人顧 ' + fmtNum(ratio.machines) + ' 機';
-      }
+      ws.getCell(rows[st.p + 'Ratio'], R.noteCol).value = fmtNum(ratio.people) + ' 人顧 ' + fmtNum(ratio.machines) + ' 機';
     });
 
-    // 目檢站 需求人力（小數一位無條件進位）
-    //   =ROUNDUP(需求工時/工作時間/工作班別數/(工作天數+加班天數 - 目檢)/出勤率/作業效率,1)
-    // 需求人數 - 目檢
-    //   =ROUNDUP(需求人力 - Milling*工作班別數+需求人力 - Dipping*工作班別數,1)
-    // 總需求人力 =需求顧機人數 - Milling+需求顧機人數 - dipping+需求人數 - 目檢
-    // 總現有人力 =現有人力 Milling+Dipping
-    // 人力需求差異 =總現有人力-總需求人力
-    for (m = 0; m < R.months; m++) {
-      [['laborMinMilling', 'laborPplMilling'], ['laborMinDipping', 'laborPplDipping']].forEach(function (p) {
-        put(p[1], m, {
-          formula: 'ROUNDUP(' + addr(p[0], m) + '/' + addr('workMinutes', m) + '/' + addr('shifts', m) + '/(' +
-            addr('workDays', m) + '+' + addr('laborOtDays', m) + ')/' + addr('attendance', m) + '/' + addr('efficiency', m) + ',1)'
-        }, '0.0');
-      });
-      put('laborNeed', m, {
-        formula: 'ROUNDUP(' + addr('laborPplMilling', m) + '*' + addr('shifts', m) + '+' +
-          addr('laborPplDipping', m) + '*' + addr('shifts', m) + ',1)'
-      }, '0.0');
-      put('needTotal', m, { formula: addr('millingNeed', m) + '+' + addr('dippingNeed', m) + '+' + addr('laborNeed', m) }, '0.0');
-      put('haveTotal', m, { formula: addr('haveMilling', m) + '+' + addr('haveDipping', m) }, '0.0');
-      put('gap', m, { formula: addr('haveTotal', m) + '-' + addr('needTotal', m) }, '0.0');
-    }
+    // 目檢站 需求工時：參照 MPS 工作表該段「目檢需求工時」的 Total 列
+    var lh = (o && o.laborHours) || {};
+    putList('laborMinGmo', lh.glass);
+    putList('laborMinPlastic', lh.plastic);
 
-    // 列印：橫向、一頁寬
-    Object.assign(ws.pageSetup, { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 });
+    // 列印：直向、一頁寬
+    Object.assign(ws.pageSetup, { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 });
 
     var wbAll = ws.workbook;
     if (wbAll) wbAll.calcProperties = Object.assign({}, wbAll.calcProperties, { fullCalcOnLoad: true });
@@ -3497,7 +3488,7 @@
   }
 
   var ExcelIO = {
-    VERSION: 3,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
+    VERSION: 4,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
     colToNum: colToNum,
     numToCol: numToCol,
     normalizeText: normalizeText,
