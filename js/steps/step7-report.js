@@ -17,6 +17,9 @@
  *     需求人力（On Line）(操機+共用+目檢) =需求操機人員(GMO+Plastic+共用)+需求目檢人員
  *     總需求人力 =需求人力（On Line）+需求人力（Off Line）；總現有人力 =現有人力（On Line）+現有人力（Off Line）
  *     人力需求差異 =總現有人力-總需求人力；總人力 Loading Rate =總需求人力/總現有人力
+ *     現有人力（On Line）、（Off Line）  第 6 步確認的 on line／off line 列 × 一般鍍膜、＿＿鍍膜兩行，全部加總
+ *                                        例如 =SUM('人力'!D5:D10,'人力'!E5:E10)
+ *     需求人力（Off Line）               =現有人力（Off Line）
  *     MPS GMO、Plastic   公式：參照 MPS 工作表該段（GMO = 第 1 步的 Glass 段）第 2 步的 Total 列，例如 ='MPS'!E10；
  *                        沒有 Total 列就直接加總該段（當月也不加 WIP）
  *     GMO 站、Plastic 站
@@ -484,6 +487,7 @@
       work.mps = mpsFormulas(main, src);
       work.machineTotals = machineTotals(main, src);
       work.laborTotals = laborTotals(main, src);
+      work.hasManpower = wb.worksheets.some(function (w) { return sameName(w.name, MP_SHEET); });
       work.loading = false;
       refresh();
     }).catch(function (err) {
@@ -556,6 +560,17 @@
       }
     });
 
+    var mpos = manpowerPos(src);
+    if (!work.hasManpower) {
+      els.notes.appendChild(h('li', { class: 'is-warn' }, '檔案裡沒有「' + MP_SHEET + '」工作表（第 6 步），現有人力（On Line、Off Line）和需求人力（Off Line）先留空白。'));
+    } else if (!mpos) {
+      els.notes.appendChild(h('li', { class: 'is-warn' }, '找不到第 6 步確認的位置（on line、off line 的列，一般鍍膜、＿＿鍍膜的行），現有人力先留空白。請回到第 6 步確認一次。'));
+    } else {
+      var mc = [mpos.generalCol, mpos.otherCol];
+      els.notes.appendChild(h('li', null, '現有人力（公式）：On Line =SUM(' + MP_SHEET + ' ' + rangeText(mpos.onlineRows, mc) + ')、Off Line =SUM(' +
+        MP_SHEET + ' ' + rangeText(mpos.offlineRows, mc) + ')；需求人力（Off Line）= 現有人力（Off Line）。'));
+    }
+
     var lt = work.laborTotals;
     STATIONS.forEach(function (st) {
       var list = lt && lt[st.key];
@@ -579,7 +594,7 @@
         '還沒填：' + read.blank.slice(0, 12).join('、') + (read.blank.length > 12 ? ' …等 ' + read.blank.length + ' 格' : '') +
         '。沒填的格子在總表留空白，一樣可以匯出。'));
     }
-    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站（機台需求工時、人機比、開機數、加班天數、需求操機人員）、共用操機人員、需求操機人員(GMO+Plastic+共用)、操機人力 Loading Rate、目檢站（需求工時、加班天數、需求人力、備料）、需求目檢人員、目檢人力 Loading Rate、需求人力（On Line）、總需求人力、總現有人力、人力需求差異、總人力 Loading Rate；現有操機人員、現有目檢人員、需求人力（Off Line）、現有人力（On Line、Off Line）先留空白，之後再補上。現有人力還沒填時，三個 Loading Rate 會顯示 #DIV/0!。'));
+    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站（機台需求工時、人機比、開機數、加班天數、需求操機人員）、共用操機人員、需求操機人員(GMO+Plastic+共用)、操機人力 Loading Rate、目檢站（需求工時、加班天數、需求人力、備料）、需求目檢人員、目檢人力 Loading Rate、需求人力（On Line、Off Line）、總需求人力、現有人力（On Line、Off Line）、總現有人力、人力需求差異、總人力 Loading Rate；現有操機人員、現有目檢人員先留空白，之後再補上（還沒填時，操機和目檢的 Loading Rate 會顯示 #DIV/0!）。'));
 
     var inputs = read.values;
     els.exportBtn.disabled = false;
@@ -620,6 +635,24 @@
   }
 
   /* ---------- 產生活頁簿 ---------- */
+  /* ---------- 現有人力：第 6 步確認的位置 ---------- */
+  var MP_SHEET = '人力';
+  // 沿用第 6 步剛做好的結果時用它確認的位置；上傳第 6 步的檔案時用第 6 步記住的位置
+  function manpowerPos(src) {
+    var m = src.kind === 'prev' && src.prev.manpower ? src.prev.manpower : null;
+    if (!m) {
+      var s = {};
+      try { s = IEApp.settings.read('step6') || {}; } catch (e) { s = {}; }
+      m = { onlineRows: s.online, offlineRows: s.offline, generalCol: parseInt(s.generalCol, 10) || 0, otherCol: parseInt(s.otherCol, 10) || 0 };
+    }
+    function ok(p) { return Array.isArray(p) && p[0] > 0 && p[1] >= p[0]; }
+    if (!ok(m.onlineRows) || !ok(m.offlineRows) || !(m.generalCol || m.otherCol)) return null;
+    return { sheet: MP_SHEET, onlineRows: m.onlineRows, offlineRows: m.offlineRows, generalCol: m.generalCol, otherCol: m.otherCol };
+  }
+  function rangeText(rows, cols) {
+    return cols.filter(Boolean).map(function (c) { return XIO.numToCol(c) + rows[0] + ':' + XIO.numToCol(c) + rows[1]; }).join('、');
+  }
+
   function buildWorkbook(src, refs, inputs) {
     return buildFrom(src).then(function (wb) {
       var main = pickMain(wb, src);
@@ -633,7 +666,8 @@
         plasticRatio: { machines: inputs.plasticMachines, people: inputs.plasticPeople },
         gmoMax: inputs.gmoMaxMachines,
         plasticMax: inputs.plasticMaxMachines,
-        laborHours: lt || null
+        laborHours: lt || null,
+        manpower: manpowerPos(src)
       });
       return wb;
     });
