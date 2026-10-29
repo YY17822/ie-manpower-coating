@@ -412,3 +412,6 @@ select.in-month { text-align-last: center; }
 
 /* 第 7 步：GMO 站、Plastic 站（人機比、最大開機數） */
 .station-block + .station-block { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #D5DEDC; }
+
+/* 第 6 步：on line、off line 的起迄列（兩個選單排同一行） */
+.in-select.in-range { width: 13.5rem; max-width: 100%; }

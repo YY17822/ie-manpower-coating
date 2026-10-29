@@ -15,7 +15,7 @@
     { id: 'p003-import', title: '匯入 P003 標準工時', note: '加到同一個檔案' },
     { id: 'ct-lookup', title: '帶入標準工時 CT.', note: '機台 CT.、目檢 CT.、檢驗率' },
     { id: 'demand-hours', title: '計算需求工時', note: '機台、目檢需求工時' },
-    { id: 'manpower', title: '匯入人力報表', note: '未來六個月的人力預計' },
+    { id: 'manpower', title: '匯入人力報表', note: '現有人力 on line、off line' },
     { id: 'report', title: '總表', note: '各月人力需求總覽' }
   ];
 
