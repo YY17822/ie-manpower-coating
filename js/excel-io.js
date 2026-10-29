@@ -3259,6 +3259,7 @@
    * o.manpower    第 6 步確認的位置 { sheet, onlineRows: [起, 迄], offlineRows: [起, 迄], generalCol, otherCol }；沒有就不填現有人力
    *               現有人力（On Line）=SUM(人力!on line 列 × 一般鍍膜行, 人力!on line 列 × ＿＿鍍膜行)，Off Line 同理；
    *               需求人力（Off Line）=現有人力（Off Line）
+   *               manpower.categories [{ name, row }]：現有操機人員 =SUM(人力!操機那一列 × 兩行)，現有目檢人員 =目檢那一列
    * o.laborHours    dmBlockTotalFormulas()（目檢需求工時）的結果：目檢站 需求工時 - GMO、- Plastic 兩列
    * o.inputs        使用者在畫面上輸入的值（沒填的是 null，那一格留空白）：
    *   workDaysDay、workDaysShift   [6 個月] 工作天數 常日班、做四休二
@@ -3274,7 +3275,7 @@
    * 需求目檢人員 =ROUND(需求人力 - GMO+需求人力 - Plastic+備料,1)；目檢人力 Loading Rate =需求目檢人員/現有目檢人員。
    * 需求人力（On Line）=需求操機人員+需求目檢人員；總需求人力 =On Line+Off Line；總現有人力 =現有 On Line+Off Line；
    * 人力需求差異 =總現有人力-總需求人力；總人力 Loading Rate =總需求人力/總現有人力。
-   * 其他列（現有操機人員、現有目檢人員）先留空白，之後再補上。
+   * 現有操機人員、現有目檢人員：人力工作表「操機」「目檢」那一列 × 兩行加總。
    * 回傳 { worksheet, rows: { key: 列號 }, monthCol, months }
    */
   function addDmReportSheet(wb, o) {
@@ -3515,6 +3516,22 @@
       for (m = 0; m < R.months; m++) {
         if (mpw.offlineRows && mpw.offlineRows[0] > 0) put('needOffline', m, { formula: addr('haveOffline', m) });
       }
+      // 現有操機人員、現有目檢人員：人力工作表「操機」「目檢」那一列 × 一般鍍膜、＿＿鍍膜兩行加總
+      //   例如 =SUM('人力'!D5,'人力'!E5)（類別名稱完全一樣的優先，沒有就找名稱裡有這兩個字的）
+      var cats = mpw.categories || [];
+      function catRow(word) {
+        var hit = cats.filter(function (x) { return x.row > 0 && String(x.name).trim() === word; })[0] ||
+          cats.filter(function (x) { return x.row > 0 && String(x.name).indexOf(word) >= 0; })[0];
+        return hit ? hit.row : 0;
+      }
+      [['haveOperators', '操機'], ['haveInspectors', '目檢']].forEach(function (p) {
+        var r = catRow(p[1]);
+        if (!r || !mcols.length) return;
+        var total = 0;
+        mcols.forEach(function (c) { var v = numberOrError(mws.findCell(r, c)); if (!v.error) total += v.value; });
+        var f = 'SUM(' + mcols.map(function (c) { return sheetRef(mws.name) + numToCol(c) + r; }).join(',') + ')';
+        for (var mm = 0; mm < R.months; mm++) put(p[0], mm, { formula: f, result: total });
+      });
     }
 
     // 需求人力（On Line）(操機+共用+目檢) =需求操機人員(GMO+Plastic+共用)+需求目檢人員
@@ -3590,7 +3607,7 @@
   }
 
   var ExcelIO = {
-    VERSION: 12,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
+    VERSION: 13,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
     colToNum: colToNum,
     numToCol: numToCol,
     normalizeText: normalizeText,

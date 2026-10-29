@@ -20,6 +20,7 @@
  *     現有人力（On Line）、（Off Line）  第 6 步確認的 on line／off line 列 × 一般鍍膜、＿＿鍍膜兩行，全部加總
  *                                        例如 =SUM('人力'!D5:D10,'人力'!E5:E10)
  *     需求人力（Off Line）               =現有人力（Off Line）
+ *     現有操機人員、現有目檢人員         第 6 步確認的「操機」「目檢」那一列 × 一般鍍膜、＿＿鍍膜兩行加總，例如 =SUM('人力'!D5,'人力'!E5)
  *     MPS GMO、Plastic   公式：參照 MPS 工作表該段（GMO = 第 1 步的 Glass 段）第 2 步的 Total 列，例如 ='MPS'!E10；
  *                        沒有 Total 列就直接加總該段（當月也不加 WIP）
  *     GMO 站、Plastic 站
@@ -569,6 +570,15 @@
       var mc = [mpos.generalCol, mpos.otherCol];
       els.notes.appendChild(h('li', null, '現有人力（公式）：On Line =SUM(' + MP_SHEET + ' ' + rangeText(mpos.onlineRows, mc) + ')、Off Line =SUM(' +
         MP_SHEET + ' ' + rangeText(mpos.offlineRows, mc) + ')；需求人力（Off Line）= 現有人力（Off Line）。'));
+      [['現有操機人員', '操機'], ['現有目檢人員', '目檢']].forEach(function (p) {
+        var r = categoryRow(mpos, p[1]);
+        if (r) {
+          els.notes.appendChild(h('li', null, p[0] + '（公式）：=SUM(' + MP_SHEET + ' ' +
+            mc.filter(Boolean).map(function (c) { return XIO.numToCol(c) + r; }).join('、') + ')（第 6 步「' + p[1] + '」在第 ' + r + ' 列）。'));
+        } else {
+          els.notes.appendChild(h('li', { class: 'is-warn' }, '第 6 步的類別項目裡找不到「' + p[1] + '」，' + p[0] + '先留空白。請回到第 6 步確認類別項目。'));
+        }
+      });
     }
 
     var lt = work.laborTotals;
@@ -594,7 +604,7 @@
         '還沒填：' + read.blank.slice(0, 12).join('、') + (read.blank.length > 12 ? ' …等 ' + read.blank.length + ' 格' : '') +
         '。沒填的格子在總表留空白，一樣可以匯出。'));
     }
-    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站（機台需求工時、人機比、開機數、加班天數、需求操機人員）、共用操機人員、需求操機人員(GMO+Plastic+共用)、操機人力 Loading Rate、目檢站（需求工時、加班天數、需求人力、備料）、需求目檢人員、目檢人力 Loading Rate、需求人力（On Line、Off Line）、總需求人力、現有人力（On Line、Off Line）、總現有人力、人力需求差異、總人力 Loading Rate；現有操機人員、現有目檢人員先留空白，之後再補上（還沒填時，操機和目檢的 Loading Rate 會顯示 #DIV/0!）。'));
+    els.notes.appendChild(h('li', null, '目前填入工作天數、工作時間、機台每日可動工時、班別數、出勤率、作業效率、MPS 的兩列、GMO 站和 Plastic 站（機台需求工時、人機比、開機數、加班天數、需求操機人員）、共用操機人員、需求操機人員(GMO+Plastic+共用)、操機人力 Loading Rate、目檢站（需求工時、加班天數、需求人力、備料）、需求目檢人員、目檢人力 Loading Rate、需求人力（On Line、Off Line）、總需求人力、現有人力（On Line、Off Line）、總現有人力、人力需求差異、總人力 Loading Rate、現有操機人員、現有目檢人員。總表的每一列都有內容了。'));
 
     var inputs = read.values;
     els.exportBtn.disabled = false;
@@ -643,11 +653,25 @@
     if (!m) {
       var s = {};
       try { s = IEApp.settings.read('step6') || {}; } catch (e) { s = {}; }
-      m = { onlineRows: s.online, offlineRows: s.offline, generalCol: parseInt(s.generalCol, 10) || 0, otherCol: parseInt(s.otherCol, 10) || 0 };
+      var items = s.items && typeof s.items === 'object' ? s.items : {};
+      m = {
+        onlineRows: s.online, offlineRows: s.offline, generalCol: parseInt(s.generalCol, 10) || 0, otherCol: parseInt(s.otherCol, 10) || 0,
+        categories: Object.keys(items).map(function (k) { return { name: k, row: parseInt(items[k], 10) || 0 }; })
+      };
     }
     function ok(p) { return Array.isArray(p) && p[0] > 0 && p[1] >= p[0]; }
     if (!ok(m.onlineRows) || !ok(m.offlineRows) || !(m.generalCol || m.otherCol)) return null;
-    return { sheet: MP_SHEET, onlineRows: m.onlineRows, offlineRows: m.offlineRows, generalCol: m.generalCol, otherCol: m.otherCol };
+    return {
+      sheet: MP_SHEET, onlineRows: m.onlineRows, offlineRows: m.offlineRows, generalCol: m.generalCol, otherCol: m.otherCol,
+      categories: m.categories || []
+    };
+  }
+  // 「操機」「目檢」在人力工作表的第幾列（名稱完全一樣的優先，沒有就找名稱裡有這兩個字的）；找不到回傳 0
+  function categoryRow(mpos, word) {
+    var cats = (mpos && mpos.categories) || [];
+    var hit = cats.filter(function (x) { return x.row > 0 && String(x.name).trim() === word; })[0] ||
+      cats.filter(function (x) { return x.row > 0 && String(x.name).indexOf(word) >= 0; })[0];
+    return hit ? hit.row : 0;
   }
   function rangeText(rows, cols) {
     return cols.filter(Boolean).map(function (c) { return XIO.numToCol(c) + rows[0] + ':' + XIO.numToCol(c) + rows[1]; }).join('、');
