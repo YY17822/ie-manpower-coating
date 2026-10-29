@@ -142,7 +142,7 @@ P003 的 Machine、Labor 是做 Base Qty 個的工時（Base Qty 有 1 也有 10
 - 數值的單位和 CT. 相同，不換算。
 - 對已經有這兩塊的檔案重做這一步，會覆蓋原本的位置。
 
-## 第 6 步：匯入人力報表（Coating，版本 10 起）
+## 第 6 步：匯入人力報表（Coating，版本 10 起；類別項目版本 12 起）
 
 把人力報表（現有人力 - 鍍膜）放進前面做好的 Excel，成為同一個檔案裡名為 `人力` 的工作表，並確認之後總表要抓的資料在哪裡。
 
@@ -156,15 +156,20 @@ P003 的 Machine、Labor 是做 Base Qty 個的工時（Base Qty 有 1 也有 10
    - 「off line」從第幾列到第幾列
    - 「一般鍍膜」在哪一行
    - 「＿＿鍍膜」在哪一行
+   - 「類別」在哪一行，以及類別行裡每個項目（操機、目檢、文書…）各在第幾列
 4. 按「匯出 Excel」，得到 `…_需求工時_人力.xlsx`。
 
 - 程式會先自動帶入：寫 `on line`、`off line` 的格子（不分大小寫、空白、橫線），有合併就用合併的範圍；沒合併時 on line 到 off line 的前一列、off line 到最後一列。
   表頭寫「一般鍍膜」的那一行，以及同一列另一個寫「…鍍膜」的那一行。帶不出來的，用上次確認的位置。
+- 類別行：表頭寫「類別」的那一行（沒有就用 on line 那一格右邊那一行）。on line、off line 範圍內這一行有文字的格子就是各個項目，
+  列成一張表（大項、類別、在第幾列），列可以改。改過的列依項目名稱記住，下個月同名的項目沿用。
+  換了類別的行、或改了 on line／off line 的範圍，項目會重新找。
 - 選單裡每一列會顯示「第 N 列　這一列的文字」，每一行會顯示表頭文字。
 - 預覽表格裡螢光的格子，就是之後總表要抓的資料；下面的核對表列出 on line、off line 每一列（大項、類別）在兩行的人數和合計。空白當成 0；不是數字的格子標成淺紅色。
 - 「到」比「從」前面時不能匯出；on line 和 off line 重疊、兩行選同一行、有不是數字的格子，會提醒但不擋匯出。
 - `人力` 工作表是整張照抄（值、格式、合併儲存格、行寬、列高），公式換成數值。上傳的檔案裡如果已經有 `人力` 工作表，會換成這次上傳的。
-- 確認的位置放在 `IEApp.state.withManpower.manpower`（`onlineRows`、`offlineRows`：[起, 迄] 列號；`generalCol`、`otherCol`：行號），給之後的總表用（總表還沒開始抓）。
+- 確認的位置放在 `IEApp.state.withManpower.manpower`（`onlineRows`、`offlineRows`：[起, 迄] 列號；`generalCol`、`otherCol`、`catCol`：行號；
+  `categories`：[{ name, row, group }] 各類別項目的列），給總表用。
 
 ## 第 7 步：總表（光鍍人力需求，版本 4 起；開機數、加班天數、需求操機人員版本 5 起；共用操機人員、需求操機人員合計、操機人力 Loading Rate 版本 6 起；目檢站版本 8 起；需求／現有人力合計版本 9 起；現有人力版本 11 起）
 
@@ -323,6 +328,7 @@ icons/                      圖示
 | `step4.cutRate`、`step4.dipRate` | 第 4 步：Cutting、Dipping 的目檢-檢驗率 |
 | `step5.startRow` | 第 5 步：資料起始列 |
 | `step6.online`、`step6.offline`、`step6.generalCol`、`step6.otherCol` | 第 6 步：on line、off line 的起迄列，一般鍍膜、＿＿鍍膜在哪一行 |
+| `step6.catCol`、`step6.items` | 第 6 步：類別在哪一行；各類別項目在第幾列（`{ 名稱: 列號 }`） |
 | `step7.workHours`、`step7.restHours` | 第 7 步：工作時數、休息時數，各 6 個月（版本 5 以前是一個值，打開新版時六個月都填那個值） |
 | `step7.machineHours`、`step7.shifts`、`step7.attendance`、`step7.efficiency` | 第 7 步：機台每日可動工時、班別數、出勤率、作業效率，各 6 個月 |
 | `step7.gmoMachines`、`step7.gmoPeople`、`step7.plasticMachines`、`step7.plasticPeople` | 第 7 步：GMO 站、Plastic 站的機台數和人數 |

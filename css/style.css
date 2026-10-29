@@ -415,3 +415,8 @@ select.in-month { text-align-last: center; }
 
 /* 第 6 步：on line、off line 的起迄列（兩個選單排同一行） */
 .in-select.in-range { width: 13.5rem; max-width: 100%; }
+
+/* 第 6 步：類別項目清單 */
+.cat-items:empty { display: none; }
+.cat-items { margin-top: 0.875rem; }
+.cat-table tbody th { font-weight: 700; }

@@ -10,16 +10,19 @@
  *     2. off line 是第幾列到第幾列
  *     3.「一般鍍膜」在哪一行
  *     4.「___鍍膜」在哪一行
+ *     5.「類別」在哪一行，以及類別行裡每個項目（操機、目檢、文書…）各在第幾列
  *   程式會先自動帶入：寫 on line／off line 的格子（有合併就用合併的範圍；沒合併時 on line 到 off line 的前一列、
- *   off line 到最後一列），表頭寫「一般鍍膜」的那一行，以及同一列另一個寫「鍍膜」的那一行。使用者核對、不對就改。
- *   四項都選好時會記住，下個月自動帶入不到時拿來當預設值。
+ *   off line 到最後一列），表頭寫「一般鍍膜」的那一行，以及同一列另一個寫「鍍膜」的那一行；
+ *   類別行：表頭寫「類別」的那一行（沒有就用 on line 那一格右邊那一行），on line、off line 範圍內這一行有文字的格子就是各個項目。
+ *   使用者核對、不對就改。都選好時會記住，下個月自動帶入不到時拿來當預設值（項目的列依名稱記）。
  *
  *   來源有兩種：
  *     a. 剛才第 5 步做好的結果（不用先匯出，直接沿用）
  *     b. 上傳之前第 5 步匯出的檔案
  *
  * 做完之後把結果放在 IEApp.state.withManpower，下一步直接拿來用：
- *   manpower  { onlineRows: [起, 迄], offlineRows: [起, 迄], generalCol, otherCol }（在「人力」工作表的列號、行號，A=1）
+ *   manpower  { onlineRows: [起, 迄], offlineRows: [起, 迄], generalCol, otherCol, catCol,
+ *               categories: [{ name: '操機', row: 5, group: 'online' }, …] }（在「人力」工作表的列號、行號，A=1）
  */
 (function (global) {
   'use strict';
@@ -61,14 +64,19 @@
     function pair(v) { return Array.isArray(v) && v.length === 2 ? [parseInt(v[0], 10) || 0, parseInt(v[1], 10) || 0] : [0, 0]; }
     return {
       online: pair(s.online), offline: pair(s.offline),
-      generalCol: parseInt(s.generalCol, 10) || 0, otherCol: parseInt(s.otherCol, 10) || 0
+      generalCol: parseInt(s.generalCol, 10) || 0, otherCol: parseInt(s.otherCol, 10) || 0,
+      catCol: parseInt(s.catCol, 10) || 0,
+      items: s.items && typeof s.items === 'object' && !Array.isArray(s.items) ? s.items : {}
     };
   }
   function saveSettings() {
     if (!S.pick) return;
+    var items = {};
+    S.pick.items.forEach(function (it) { if (it.row) items[it.name] = it.row; });
     settings = {
       online: S.pick.online.slice(), offline: S.pick.offline.slice(),
-      generalCol: S.pick.generalCol, otherCol: S.pick.otherCol
+      generalCol: S.pick.generalCol, otherCol: S.pick.otherCol,
+      catCol: S.pick.catCol, items: items
     };
     try { IEApp.settings.write(STORE_KEY, settings); } catch (e) { /* 存不了就算了 */ }
   }
@@ -138,6 +146,12 @@
         h('label', { for: 'f8-' + c.key, class: 'label-fixed', text: c.label + '在' }), sel);
     });
 
+    els.catSelect = h('select', { id: 'f8-catCol', class: 'in-select' });
+    els.catSelect.addEventListener('change', function () { onCatChange(els.catSelect.value); });
+    var catRow = h('div', { class: 'field-row' },
+      h('label', { for: 'f8-catCol', class: 'label-fixed', text: '「類別」在' }), els.catSelect);
+    els.items = h('div', { class: 'cat-items' });
+
     els.preview = h('div', { class: 'sheet-area' });
     els.check = h('div', { class: 'sheet-area' });
 
@@ -165,8 +179,8 @@
         els.mpDrop.el, els.sheetRow, els.mpMsg),
       h('li', { class: 'task' },
         h('h2', { text: '確認位置' }),
-        h('p', { class: 'hint', text: '程式會先自動帶入：寫 on line、off line 的格子（合併的範圍就是那幾列），以及表頭寫「一般鍍膜」和另一個「…鍍膜」的那兩行。請對照下面的表格確認，不對就改。' }),
-        rows, cols, els.preview, els.check),
+        h('p', { class: 'hint', text: '程式會先自動帶入：寫 on line、off line 的格子（合併的範圍就是那幾列），以及表頭寫「一般鍍膜」和另一個「…鍍膜」的那兩行；類別行裡的每個項目也會列出各在第幾列。請對照下面的表格確認，不對就改。' }),
+        rows, cols, catRow, els.items, els.preview, els.check),
       h('li', { class: 'task' },
         h('h2', { text: '匯出' }),
         els.summary, els.notes,
@@ -285,8 +299,38 @@
       out.headRow = general.row;
       var other = findCellBy(ws, ext, function (t) { return t.indexOf('鍍膜') >= 0 && t.indexOf('一般') < 0; }, general.row);
       if (other) out.otherCol = other.col;
+      var cat = findCellBy(ws, ext, function (t) { return t === '類別'; }, general.row);
+      if (cat) out.catCol = cat.col;
     }
     return out;
+  }
+
+  // 類別行裡的項目：on line、off line 範圍內，類別那一行有文字的格子（合併的只算第一列）
+  // 回傳 [{ name, row, group: 'online' | 'offline' }]，依列的順序
+  function detectItems(pick) {
+    var mp = S.mp, out = [];
+    if (!pick.catCol) return out;
+    GROUPS.forEach(function (g) {
+      var p = pick[g.key];
+      if (!(p[0] > 0) || !(p[1] >= p[0])) return;
+      for (var r = p[0]; r <= p[1]; r++) {
+        var row = mp.ws.findRow(r);
+        var cell = row ? row.findCell(pick.catCol) : null;
+        if (!cell || (cell.isMerged && cell.master !== cell)) continue;
+        var t = cellText(cell);
+        if (!t || squash(t) === 'online' || squash(t) === 'offline') continue;
+        out.push({ name: t, row: r, group: g.key });
+      }
+    });
+    return out;
+  }
+  // 自動找到的項目，套上上次使用者改過的列（依名稱；還在報表範圍內才用）
+  function applyRemembered(items) {
+    items.forEach(function (it) {
+      var r = parseInt(settings.items[it.name], 10);
+      if (r >= 1 && r <= S.mp.ext.lastRow) it.row = r;
+    });
+    return items;
   }
 
   function pickSheet(index) {
@@ -308,8 +352,10 @@
       generalCol: d.generalCol || (settings.generalCol <= maxC ? settings.generalCol : 0),
       otherCol: d.otherCol || (settings.otherCol <= maxC ? settings.otherCol : 0),
       headRow: d.headRow,
-      catCol: d.catCol
+      catCol: d.catCol || (settings.catCol <= maxC ? settings.catCol : 0),
+      items: []
     };
+    S.pick.items = applyRemembered(detectItems(S.pick));
     fillSelects();
     refresh();
   }
@@ -366,11 +412,70 @@
       }
       sel.value = S.pick[c.key] ? String(S.pick[c.key]) : '';
     });
+
+    // 類別在哪一行
+    var cs = els.catSelect;
+    cs.textContent = '';
+    if (!ready) { cs.appendChild(h('option', { value: '', text: '先上傳人力報表' })); cs.disabled = true; }
+    else {
+      cs.disabled = false;
+      cs.appendChild(h('option', { value: '', text: '請選擇' }));
+      for (var cc = 1; cc <= mp.ext.colCount; cc++) {
+        cs.appendChild(h('option', { value: String(cc), text: XIO.numToCol(cc) + ' 行' + (labels[cc] ? '　' + shorten(labels[cc], 30) : '') }));
+      }
+      cs.value = S.pick.catCol ? String(S.pick.catCol) : '';
+    }
+    fillItems();
+  }
+
+  // 類別項目的清單：每個項目一列，可以改在第幾列
+  function fillItems() {
+    var box = els.items;
+    box.textContent = '';
+    var mp = S.mp;
+    if (!mp || !mp.ws || !S.pick.catCol) return;
+    var items = S.pick.items;
+    if (!items.length) {
+      box.appendChild(h('p', { class: 'hint', text: '在這一行的 on line、off line 範圍裡找不到類別項目。請確認「類別」在哪一行，以及 on line、off line 的列。' }));
+      return;
+    }
+    var body = h('tbody');
+    items.forEach(function (it, i) {
+      var sel = h('select', { class: 'in-select in-range', 'aria-label': it.name + ' 在第幾列' });
+      sel.appendChild(h('option', { value: '', text: '請選擇' }));
+      for (var r = 1; r <= mp.ext.lastRow; r++) {
+        sel.appendChild(h('option', { value: String(r), text: '第 ' + r + ' 列' + (mp.labels[r] ? '　' + shorten(mp.labels[r], 24) : '') }));
+      }
+      sel.value = it.row ? String(it.row) : '';
+      sel.addEventListener('change', function () {
+        S.pick.items[i].row = parseInt(sel.value, 10) || 0;
+        els.exportNote.textContent = '';
+        refresh();
+      });
+      body.appendChild(h('tr', null,
+        h('td', { text: it.group === 'online' ? 'on line' : 'off line' }),
+        h('th', { scope: 'row', text: it.name }),
+        h('td', null, sel)));
+    });
+    box.appendChild(h('p', { class: 'sheet-caption', text: '類別行裡找到的項目（' + items.length + ' 個），各在人力報表的第幾列：' }));
+    box.appendChild(h('table', { class: 'grid-inputs cat-table' },
+      h('thead', null, h('tr', null, h('th', { text: '大項' }), h('th', { text: '類別' }), h('th', { text: '在第幾列' }))), body));
+  }
+
+  function onCatChange(value) {
+    if (!S.pick) return;
+    S.pick.catCol = parseInt(value, 10) || 0;
+    S.pick.items = applyRemembered(detectItems(S.pick));
+    fillItems();
+    els.exportNote.textContent = '';
+    refresh();
   }
 
   function onRangeChange(key, k, value) {
     if (!S.pick) return;
     S.pick[key][k] = parseInt(value, 10) || 0;
+    S.pick.items = applyRemembered(detectItems(S.pick));
+    fillItems();
     els.exportNote.textContent = '';
     refresh();
   }
@@ -395,17 +500,14 @@
     return { text: String(Math.round(n * 1000) / 1000), number: n };
   }
 
-  // 類別：大項右邊那一行到第一個人數行之前，第一個有文字的格子
+  // 類別：使用者選的類別那一行的文字（合併格只在第一列顯示）
   function categoryText(r) {
+    if (!S.pick.catCol) return '';
     var row = S.mp.ws.findRow(r);
-    if (!row) return '';
-    var from = S.pick.catCol || 1;
-    var firstNum = Math.min.apply(null, COLS.map(function (c) { return S.pick[c.key] || 999; }));
-    for (var c = from; c < firstNum && c <= S.mp.ext.colCount; c++) {
-      var t = cellText(row.findCell(c));
-      if (t && squash(t) !== 'online' && squash(t) !== 'offline') return t;
-    }
-    return '';
+    var cell = row ? row.findCell(S.pick.catCol) : null;
+    if (!cell || (cell.isMerged && cell.master !== cell)) return '';
+    var t = cellText(cell);
+    return t && squash(t) !== 'online' && squash(t) !== 'offline' ? t : '';
   }
 
   /* ---------- 更新畫面 ---------- */
@@ -451,6 +553,7 @@
         for (var r = p[0]; r <= p[1]; r++) keepRows[r] = true;
       });
       COLS.forEach(function (c) { if (!pick[c.key]) missing.push(c.label + '在哪一行'); });
+      if (!pick.catCol) missing.push('「類別」在哪一行');
     }
 
     // 人力報表預覽：選到的列 × 兩行畫螢光
@@ -492,6 +595,22 @@
       warn = true;
       els.notes.appendChild(h('li', { class: 'is-warn' }, '「一般鍍膜」和「＿＿鍍膜」選了同一行，請確認。'));
     }
+    if (!pick.items.length) {
+      warn = true;
+      els.notes.appendChild(h('li', { class: 'is-warn' }, '類別行裡沒有找到任何項目，請確認「類別」在哪一行。'));
+    }
+    var noRow = pick.items.filter(function (it) { return !it.row; }).map(function (it) { return it.name; });
+    if (noRow.length) {
+      warn = true;
+      els.notes.appendChild(h('li', { class: 'is-warn' }, '還沒選在第幾列：' + noRow.join('、') + '。'));
+    }
+    var byRow = {};
+    pick.items.forEach(function (it) { if (it.row) (byRow[it.row] = byRow[it.row] || []).push(it.name); });
+    Object.keys(byRow).forEach(function (r) {
+      if (byRow[r].length < 2) return;
+      warn = true;
+      els.notes.appendChild(h('li', { class: 'is-warn' }, byRow[r].join('、') + ' 選了同一列（第 ' + r + ' 列），請確認。'));
+    });
     if (read && read.bad) {
       warn = true;
       els.notes.appendChild(h('li', { class: 'is-warn' },
@@ -501,7 +620,8 @@
     var replacing = src.kind === 'file' && S.base.hasManpower;
     var text = '匯出的檔案會多一個「' + SHEET_NAME + '」工作表（' + mp.ext.lastRow.toLocaleString('en-US') + ' 列、' +
       mp.ext.colCount + ' 行）。on line 第 ' + on[0] + '–' + on[1] + ' 列、off line 第 ' + off[0] + '–' + off[1] + ' 列；' +
-      '一般鍍膜在 ' + XIO.numToCol(pick.generalCol) + ' 行、＿＿鍍膜在 ' + XIO.numToCol(pick.otherCol) + ' 行。';
+      '一般鍍膜在 ' + XIO.numToCol(pick.generalCol) + ' 行、＿＿鍍膜在 ' + XIO.numToCol(pick.otherCol) + ' 行；' +
+      '類別在 ' + XIO.numToCol(pick.catCol) + ' 行，共 ' + pick.items.length + ' 個項目。';
     if (replacing) text += ' 檔案裡原本的「' + SHEET_NAME + '」工作表會換成這次上傳的。';
     setSummary(text, false, warn || replacing);
     els.exportBtn.disabled = false;
@@ -521,11 +641,13 @@
       manpowerSheet: SHEET_NAME,
       manpower: {
         onlineRows: on.slice(), offlineRows: off.slice(),
-        generalCol: pick.generalCol, otherCol: pick.otherCol
+        generalCol: pick.generalCol, otherCol: pick.otherCol,
+        catCol: pick.catCol,
+        categories: pick.items.map(function (it) { return { name: it.name, row: it.row, group: it.group }; })
       },
       build: function () { return buildWorkbook(src, sheet); }
     };
-    saveSettings();       // 四項都選好了，記下來給下個月當預設值
+    saveSettings();       // 都選好了，記下來給下個月當預設值
     els.nextBtn.disabled = false;
   }
 
