@@ -53,13 +53,14 @@
   var R = XIO.DM_REPORT;
   var SHEET_NAME = R.sheet;
   var MONTH_TITLE = XIO.DEMAND_TITLES.machine;      // 月份從「機台需求工時」那一塊抓
-  var SUFFIX = '_總表';
+  var OUT_TITLE = '_鍍膜 人力需求預估';   // 匯出檔名：年份後兩碼 + 首月月份 + 這個，例如 2611_鍍膜 人力需求預估.xlsx
   var EXTRA = ['P003', '人力', SHEET_NAME, '總表', 'RMA人力需求'];
 
   var S = {
     upload: null,         // 上傳的第 6 步檔案 { name, buffer, sheets }
     preferUpload: false,
-    work: null            // { src, loading, error, wb, main, refs }
+    work: null,           // { src, loading, error, wb, main, refs }
+    customName: ''        // 使用者自己改的匯出檔名（不含 .xlsx）；空白 = 用預設檔名（不會記住，每個月不同）
   };
   var els = {};
 
@@ -237,9 +238,9 @@
     }
     return { month: m, year: y };
   }
-  // 六個月各自的日曆天數；月份看不懂的回傳 null。
+  // 六個月各自的 { month: 0–11, year: 西元年 }；月份看不懂的回傳 null。
   // 沒寫年份時：第一個月取離今天最近的那一年，後面的月份遇到跨年就加一年
-  function calendarDays(names) {
+  function monthYears(names) {
     var today = new Date();
     var prev = null;
     return names.map(function (name) {
@@ -255,8 +256,12 @@
         }
       }
       prev = { month: p.month, year: y };
-      return new Date(y, p.month + 1, 0).getDate();
+      return prev;
     });
+  }
+  // 六個月各自的日曆天數；月份看不懂的回傳 null
+  function calendarDays(names) {
+    return monthYears(names).map(function (p) { return p ? new Date(p.year, p.month + 1, 0).getDate() : null; });
   }
   // 填入日曆天數：force = 六格都重填（按鈕）；否則只填還沒改過的格子
   function fillCalendar(key, force) {
@@ -396,6 +401,15 @@
     els.layout = h('div', { class: 'sheet-area' });
     els.exportBtn = h('button', { type: 'button', class: 'btn-primary', disabled: true, text: '匯出 Excel', onclick: onExport });
     els.exportNote = h('span', { class: 'export-note', 'aria-live': 'polite' });
+    // 匯出的檔名：預設是 2611_鍍膜 人力需求預估，可以自己改；清空或按「用預設檔名」就回到預設
+    els.nameIn = h('input', { id: 'f9-outname', type: 'text', class: 'in in-name', autocomplete: 'off', spellcheck: 'false' });
+    els.nameIn.addEventListener('input', function () { S.customName = els.nameIn.value.trim(); });
+    els.nameReset = h('button', {
+      type: 'button', class: 'btn-secondary btn-small', text: '用預設檔名',
+      title: '改回「年份後兩碼＋首月月份＋_鍍膜 人力需求預估」',
+      onclick: function () { S.customName = ''; syncName(); }
+    });
+    syncName();
 
     // 工作時間：工作時數、休息時數（六個月共用）
     // 人機比：每一站一列（機台數、人員數）
@@ -442,7 +456,10 @@
       h('li', { class: 'task' },
         h('h2', { text: '匯出' }),
         els.summary, els.notes, els.layout,
-        h('div', { class: 'actions' }, els.exportBtn, els.exportNote))));
+        h('div', { class: 'actions' },
+          h('span', { class: 'name-field' },
+            h('label', { for: 'f9-outname', text: '檔名' }), els.nameIn, h('span', { text: '.xlsx' }), els.nameReset),
+          els.exportBtn, els.exportNote))));
 
     refresh();
   }
@@ -609,8 +626,9 @@
 
     var inputs = read.values;
     els.exportBtn.disabled = false;
+    syncName();                       // 月份確定了，預設檔名跟著更新
     IEApp.state.withReport = {
-      outName: outputName(src),
+      outName: outputName(),
       mainSheet: work.main.name,
       dataStartRow: dataStartRow(src),
       reportSheet: SHEET_NAME,
@@ -698,10 +716,28 @@
     });
   }
 
-  function outputName(src) {
-    var stem = src.name.replace(/\.[^.]+$/, '');
-    if (stem.slice(-SUFFIX.length) === SUFFIX) stem = stem.slice(0, -SUFFIX.length);
-    return stem + SUFFIX + '.xlsx';
+  // 匯出檔名：首月的年份後兩碼 + 月份兩碼，例如首月是 2026 年 11 月 → 2611_鍍膜 人力需求預估.xlsx
+  //   月份看總表月份表頭的文字（第 5 步輸入的），沒寫年份時和「帶入日曆天數」一樣推算；看不懂就用今天的年月
+  function outputName() {
+    var p = monthYears(monthNames())[0];
+    if (!p) { var t = new Date(); p = { year: t.getFullYear(), month: t.getMonth() }; }
+    var yy = String(p.year % 100), mm = String(p.month + 1);
+    if (yy.length < 2) yy = '0' + yy;
+    if (mm.length < 2) mm = '0' + mm;
+    return yy + mm + OUT_TITLE + '.xlsx';
+  }
+  // 檔名輸入框：沒有自己改過就顯示預設檔名（月份變了會跟著變）
+  function syncName() {
+    if (!els.nameIn) return;
+    var def = outputName().replace(/\.xlsx$/, '');
+    els.nameIn.placeholder = def;
+    if (!S.customName) els.nameIn.value = def;
+    else if (els.nameIn.value.trim() !== S.customName) els.nameIn.value = S.customName;
+  }
+  // 實際匯出用的檔名：輸入框的字（拿掉 Windows 不能用的字元），空白就用預設
+  function exportName() {
+    var t = (els.nameIn ? els.nameIn.value : '').trim().replace(/\.xlsx$/i, '').replace(/[\\\/:*?"<>|]/g, '_').trim();
+    return t ? t + '.xlsx' : outputName();
   }
 
   /* ---------- 匯出 ---------- */
@@ -713,8 +749,10 @@
     ready.build()
       .then(function (wb) { return XIO.toBlob(wb); })
       .then(function (blob) {
-        ui.download(blob, ready.outName);
-        els.exportNote.textContent = '已匯出 ' + ready.outName + '，在瀏覽器的下載資料夾。';
+        var name = exportName();
+        ready.outName = name;
+        ui.download(blob, name);
+        els.exportNote.textContent = '已匯出 ' + name + '，在瀏覽器的下載資料夾。';
       })
       .catch(function (err) {
         els.exportNote.textContent = '匯出失敗：' + (err && err.message ? err.message : err);
