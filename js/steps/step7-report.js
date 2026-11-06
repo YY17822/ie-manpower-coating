@@ -19,7 +19,7 @@
  *     人力需求差異 =總現有人力-總需求人力；總人力 Loading Rate =總需求人力/總現有人力
  *     現有人力（On Line）、（Off Line）  第 6 步確認的 on line／off line 列 × 一般鍍膜、＿＿鍍膜兩行，全部加總
  *                                        例如 =SUM('人力'!D5:D10,'人力'!E5:E10)
- *     需求人力（Off Line）               =現有人力（Off Line）
+ *     需求人力（Off Line）               各月輸入，有「同步首月」按鈕（版本 14 起；以前是 =現有人力（Off Line））
  *     現有操機人員、現有目檢人員         第 6 步確認的「操機」「目檢」那一列 × 一般鍍膜、＿＿鍍膜兩行加總，例如 =SUM('人力'!D5,'人力'!E5)
  *     MPS GMO、Plastic   公式：參照 MPS 工作表該段（GMO = 第 1 步的 Glass 段）第 2 步的 Total 列，例如 ='MPS'!E10；
  *                        沒有 Total 列就直接加總該段（當月也不加 WIP）
@@ -82,7 +82,8 @@
     { key: 'sharedClean', label: '共用操機人員 - 大清機', unit: '人/天', remember: true, copy: true },
     { key: 'laborOtGmo', label: '目檢站 加班天數 - GMO', unit: '天', remember: true, copy: true },
     { key: 'laborOtPlastic', label: '目檢站 加班天數 - Plastic', unit: '天', remember: true, copy: true },
-    { key: 'laborPplPrep', label: '目檢站 需求人力 - 備料', unit: '人/天', remember: true, copy: true }
+    { key: 'laborPplPrep', label: '目檢站 需求人力 - 備料', unit: '人/天', remember: true, copy: true },
+    { key: 'needOffline', label: '需求人力（Off Line）', unit: '人/天', remember: true, copy: true }
   ];
   // 人機比：每一站輸入一組機台數、人員數（六個月共用）
   var STATIONS = [
@@ -563,13 +564,13 @@
 
     var mpos = manpowerPos(src);
     if (!work.hasManpower) {
-      els.notes.appendChild(h('li', { class: 'is-warn' }, '檔案裡沒有「' + MP_SHEET + '」工作表（第 6 步），現有人力（On Line、Off Line）和需求人力（Off Line）先留空白。'));
+      els.notes.appendChild(h('li', { class: 'is-warn' }, '檔案裡沒有「' + MP_SHEET + '」工作表（第 6 步），現有人力（On Line、Off Line）先留空白。'));
     } else if (!mpos) {
       els.notes.appendChild(h('li', { class: 'is-warn' }, '找不到第 6 步確認的位置（on line、off line 的列，一般鍍膜、＿＿鍍膜的行），現有人力先留空白。請回到第 6 步確認一次。'));
     } else {
       var mc = [mpos.generalCol, mpos.otherCol];
       els.notes.appendChild(h('li', null, '現有人力（公式）：On Line =SUM(' + MP_SHEET + ' ' + rangeText(mpos.onlineRows, mc) + ')、Off Line =SUM(' +
-        MP_SHEET + ' ' + rangeText(mpos.offlineRows, mc) + ')；需求人力（Off Line）= 現有人力（Off Line）。'));
+        MP_SHEET + ' ' + rangeText(mpos.offlineRows, mc) + ')。'));
       [['現有操機人員', '操機'], ['現有目檢人員', '目檢']].forEach(function (p) {
         var r = categoryRow(mpos, p[1]);
         if (r) {

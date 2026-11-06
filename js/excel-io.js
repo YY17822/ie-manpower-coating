@@ -3258,7 +3258,6 @@
    * o.gmoMax、o.plasticMax   兩站的機台最大開機數（沒填是 null：開機數不設上限）
    * o.manpower    第 6 步確認的位置 { sheet, onlineRows: [起, 迄], offlineRows: [起, 迄], generalCol, otherCol }；沒有就不填現有人力
    *               現有人力（On Line）=SUM(人力!on line 列 × 一般鍍膜行, 人力!on line 列 × ＿＿鍍膜行)，Off Line 同理；
-   *               需求人力（Off Line）=現有人力（Off Line）
    *               manpower.categories [{ name, row }]：現有操機人員 =SUM(人力!操機那一列 × 兩行)，現有目檢人員 =目檢那一列
    * o.laborHours    dmBlockTotalFormulas()（目檢需求工時）的結果：目檢站 需求工時 - GMO、- Plastic 兩列
    * o.inputs        使用者在畫面上輸入的值（沒填的是 null，那一格留空白）：
@@ -3271,6 +3270,7 @@
    *   sharedWash、sharedSpectrum、sharedClean  [6 個月] 共用操機人員 清洗、光譜檢測、大清機
    * 需求操機人員(GMO+Plastic+共用) =兩站需求操機人員+清洗+光譜檢測+大清機；操機人力 Loading Rate =它/現有操機人員。
    *   laborOtGmo、laborOtPlastic、laborPplPrep  [6 個月] 目檢站 加班天數 - GMO、- Plastic、需求人力 - 備料
+   *   needOffline   [6 個月] 需求人力（Off Line）
    * 目檢站 需求人力 =ROUND(需求工時/((工作天數 做四休二+加班天數)*工作時間*班別數)*6/4/出勤率/作業效率,1)；
    * 需求目檢人員 =ROUND(需求人力 - GMO+需求人力 - Plastic+備料,1)；目檢人力 Loading Rate =需求目檢人員/現有目檢人員。
    * 需求人力（On Line）=需求操機人員+需求目檢人員；總需求人力 =On Line+Off Line；總現有人力 =現有 On Line+Off Line；
@@ -3404,7 +3404,7 @@
       if (isN(wh) && isN(rh)) {
         put('workMinutes', m, { formula: '(' + fmtNum(wh) + '-' + fmtNum(rh) + ')*60', result: (wh - rh) * 60 });
       }
-      ['sharedWash', 'sharedSpectrum', 'sharedClean', 'laborOtGmo', 'laborOtPlastic', 'laborPplPrep'].forEach(function (key) {
+      ['sharedWash', 'sharedSpectrum', 'sharedClean', 'laborOtGmo', 'laborOtPlastic', 'laborPplPrep', 'needOffline'].forEach(function (key) {
         var v = inp[key] && inp[key][m];
         if (isN(v)) put(key, m, v);
       });
@@ -3496,7 +3496,7 @@
 
     // 現有人力（On Line）、（Off Line）：人力工作表 on line／off line 那幾列 × 一般鍍膜、＿＿鍍膜兩行，全部加總
     //   例如 =SUM('人力'!D5:D10,'人力'!E5:E10)（六個月都一樣，人力報表是現有人數）
-    // 需求人力（Off Line）=現有人力（Off Line）
+    // 需求人力（Off Line）是畫面上各月輸入的（版本 14 起），上面和共用操機人員一起填
     var mpw = o && o.manpower;
     var mws = mpw ? wb.worksheets.filter(function (w) { return sameSheetName(w.name, mpw.sheet); })[0] : null;
     if (mws) {
@@ -3513,9 +3513,6 @@
         }).join(',') + ')';
         for (var mm = 0; mm < R.months; mm++) put(p[0], mm, { formula: f, result: total });
       });
-      for (m = 0; m < R.months; m++) {
-        if (mpw.offlineRows && mpw.offlineRows[0] > 0) put('needOffline', m, { formula: addr('haveOffline', m) });
-      }
       // 現有操機人員、現有目檢人員：人力工作表「操機」「目檢」那一列 × 一般鍍膜、＿＿鍍膜兩行加總
       //   例如 =SUM('人力'!D5,'人力'!E5)（類別名稱完全一樣的優先，沒有就找名稱裡有這兩個字的）
       var cats = mpw.categories || [];
@@ -3607,7 +3604,7 @@
   }
 
   var ExcelIO = {
-    VERSION: 13,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
+    VERSION: 14,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
     colToNum: colToNum,
     numToCol: numToCol,
     normalizeText: normalizeText,
