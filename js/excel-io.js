@@ -3088,7 +3088,8 @@
   var DM_REPORT = {
     sheet: '光鍍人力需求', title: '一般鍍膜',
     labelCol: 2, subCol: 3, unitCol: 4, monthCol: 5, months: 6, noteCol: 11,
-    titleRow: 2, headRow: 4, firstRow: 5, lastRow: 49
+    titleRow: 2, headRow: 4, firstRow: 5, lastRow: 49,
+    mpCol: 15             // 第 6 步的人力報表搬到總表的哪一行開始放（15 = O 行，人力報表的 A 行放在 O 行）
   };
   var OLD_REPORT_SHEETS = ['總表'];       // 舊版的總表名稱，重做這一步時一起換掉
   var DM_FILL = {
@@ -3259,6 +3260,9 @@
    * o.manpower    第 6 步確認的位置 { sheet, onlineRows: [起, 迄], offlineRows: [起, 迄], generalCol, otherCol }；沒有就不填現有人力
    *               現有人力（On Line）=SUM(人力!on line 列 × 一般鍍膜行, 人力!on line 列 × ＿＿鍍膜行)，Off Line 同理；
    *               manpower.categories [{ name, row }]：現有操機人員 =SUM(人力!操機那一列 × 兩行)，現有目檢人員 =目檢那一列
+   *               「人力」工作表會整張搬進總表、從 O 行（R.mpCol）開始放（列號不變），上面的公式改成參照總表裡的格子，
+   *               然後刪掉「人力」工作表（版本 17 起）
+   * 總表會排在第一個工作表，打開檔案時顯示總表（版本 17 起）。
    * o.laborHours    dmBlockTotalFormulas()（目檢需求工時）的結果：目檢站 需求工時 - GMO、- Plastic 兩列
    * o.inputs        使用者在畫面上輸入的值（沒填的是 null，那一格留空白）：
    *   workDaysDay、workDaysShift   [6 個月] 工作天數 常日班、做四休二
@@ -3495,10 +3499,14 @@
     }
 
     // 現有人力（On Line）、（Off Line）：人力工作表 on line／off line 那幾列 × 一般鍍膜、＿＿鍍膜兩行，全部加總
-    //   例如 =SUM('人力'!D5:D10,'人力'!E5:E10)（六個月都一樣，人力報表是現有人數）
+    //   例如 =SUM(R5:R10,S5:S10)（人力報表搬進總表 O 行起之後的位置；六個月都一樣，人力報表是現有人數）
     // 需求人力（Off Line）是畫面上各月輸入的（版本 14 起），上面和共用操機人員一起填
     var mpw = o && o.manpower;
     var mws = mpw ? wb.worksheets.filter(function (w) { return sameSheetName(w.name, mpw.sheet); })[0] : null;
+    var mpOff = R.mpCol - 1;           // 人力報表第 c 行 → 總表第 c + mpOff 行
+    if (mws) copyManpowerInto(mws, ws, mpOff);
+    // 人力報表第 r 列第 c 行搬到總表後的位置（同一張工作表，不用加工作表名稱）
+    function mpRef(r, c) { return numToCol(c + mpOff) + r; }
     if (mws) {
       var mcols = [mpw.generalCol, mpw.otherCol].filter(function (c, i, a) { return c > 0 && a.indexOf(c) === i; });
       [['haveOnline', mpw.onlineRows], ['haveOffline', mpw.offlineRows]].forEach(function (p) {
@@ -3508,13 +3516,11 @@
         mcols.forEach(function (c) {
           for (var r = rr[0]; r <= rr[1]; r++) { var v = numberOrError(mws.findCell(r, c)); if (!v.error) total += v.value; }
         });
-        var f = 'SUM(' + mcols.map(function (c) {
-          return sheetRef(mws.name) + numToCol(c) + rr[0] + ':' + numToCol(c) + rr[1];
-        }).join(',') + ')';
+        var f = 'SUM(' + mcols.map(function (c) { return mpRef(rr[0], c) + ':' + mpRef(rr[1], c); }).join(',') + ')';
         for (var mm = 0; mm < R.months; mm++) put(p[0], mm, { formula: f, result: total });
       });
       // 現有操機人員、現有目檢人員：人力工作表「操機」「目檢」那一列 × 一般鍍膜、＿＿鍍膜兩行加總
-      //   例如 =SUM('人力'!D5,'人力'!E5)（類別名稱完全一樣的優先，沒有就找名稱裡有這兩個字的）
+      //   例如 =SUM(R5,S5)（類別名稱完全一樣的優先，沒有就找名稱裡有這兩個字的）
       var cats = mpw.categories || [];
       function catRow(word) {
         var hit = cats.filter(function (x) { return x.row > 0 && String(x.name).trim() === word; })[0] ||
@@ -3526,7 +3532,7 @@
         if (!r || !mcols.length) return;
         var total = 0;
         mcols.forEach(function (c) { var v = numberOrError(mws.findCell(r, c)); if (!v.error) total += v.value; });
-        var f = 'SUM(' + mcols.map(function (c) { return sheetRef(mws.name) + numToCol(c) + r; }).join(',') + ')';
+        var f = 'SUM(' + mcols.map(function (c) { return mpRef(r, c); }).join(',') + ')';
         for (var mm = 0; mm < R.months; mm++) put(p[0], mm, { formula: f, result: total });
       });
     }
@@ -3544,12 +3550,65 @@
       put('loading', m, { formula: addr('needTotal', m) + '/' + addr('haveTotal', m) });
     }
 
-    // 列印：直向、一頁寬
+    // 列印：直向、一頁寬；只印總表 A 到 K 行（右邊搬進來的人力報表不印）
     Object.assign(ws.pageSetup, { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 });
+    if (mws) ws.pageSetup.printArea = 'A1:' + numToCol(R.noteCol) + R.lastRow;
+
+    // 人力報表已經搬進總表，刪掉原本的「人力」工作表
+    if (mws) wb.removeWorksheet(mws.id);
+
+    // 總表排在第一個，打開檔案時顯示總表
+    putSheetFirst(wb, ws);
 
     var wbAll = ws.workbook;
     if (wbAll) wbAll.calcProperties = Object.assign({}, wbAll.calcProperties, { fullCalcOnLoad: true });
     return { worksheet: ws, rows: rows, monthCol: R.monthCol, months: R.months, lastMonthCol: lastMonth };
+  }
+
+  /*
+   * 把人力報表（src 工作表）整張搬進 dst 工作表：第 r 列第 c 行 → 第 r 列第 c + colOff 行。
+   * 值、格式、合併儲存格、行寬、隱藏的行都帶過去（人力工作表在第 6 步已經把公式換成數值）。
+   * 列高：總表用到的列（第 1 到 49 列）照總表的；更下面的列照人力報表的。
+   */
+  function copyManpowerInto(src, dst, colOff) {
+    var R = DM_REPORT;
+    var ext = extent(src);
+    var maxCol = ext.colCount;
+    eachStoredRow(src, function (row, r) {
+      eachStoredCell(row, function (cell, c) {
+        var ncell = dst.getCell(r, c + colOff);
+        ncell.style = cell.style;
+        if (c > maxCol) maxCol = c;
+        if (cell.isMerged && cell.master !== cell) return;
+        var v = exportValue(cell);
+        if (v !== null && v !== '') ncell.value = v;
+      });
+      if (r > R.lastRow && (row.height || row.hidden)) {
+        var nrow = dst.getRow(r);
+        if (row.height) nrow.height = row.height;
+        if (row.hidden) nrow.hidden = true;
+      }
+    });
+    for (var c = 1; c <= maxCol; c++) {
+      var col = src.getColumn(c);
+      if (col.width) dst.getColumn(c + colOff).width = col.width;
+      if (col.hidden) dst.getColumn(c + colOff).hidden = true;
+    }
+    listMerges(src).forEach(function (m) {
+      dst.mergeCellsWithoutStyle(m.top, m.left + colOff, m.bottom, m.right + colOff);
+    });
+  }
+
+  // 把 ws 排到活頁簿的第一個工作表，並設成打開檔案時顯示的那一張（其他工作表取消選取）
+  function putSheetFirst(wb, ws) {
+    var others = wb.worksheets.filter(function (w) { return w !== ws; });
+    [ws].concat(others).forEach(function (w, i) {
+      w.orderNo = i;
+      var views = w.views && w.views.length ? w.views.slice() : [{}];
+      views[0] = Object.assign({}, views[0], { tabSelected: w === ws });
+      w.views = views;
+    });
+    wb.views = [{ x: 0, y: 0, width: 10000, height: 20000, firstSheet: 0, activeTab: 0, visibility: 'visible' }];
   }
 
   /*
@@ -3604,7 +3663,7 @@
   }
 
   var ExcelIO = {
-    VERSION: 16,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
+    VERSION: 17,           // 程式版本，顯示在畫面右上角；每次改版加 1（index.html 的 ?v= 也要改）
     colToNum: colToNum,
     numToCol: numToCol,
     normalizeText: normalizeText,

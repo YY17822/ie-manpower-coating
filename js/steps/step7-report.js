@@ -18,9 +18,9 @@
  *     總需求人力 =需求人力（On Line）+需求人力（Off Line）；總現有人力 =現有人力（On Line）+現有人力（Off Line）
  *     人力需求差異 =總現有人力-總需求人力；總人力 Loading Rate =總需求人力/總現有人力
  *     現有人力（On Line）、（Off Line）  第 6 步確認的 on line／off line 列 × 一般鍍膜、＿＿鍍膜兩行，全部加總
- *                                        例如 =SUM('人力'!D5:D10,'人力'!E5:E10)
+ *                                        「人力」工作表整張搬進總表 O 行起（版本 17 起），例如 =SUM(R5:R10,S5:S10)
  *     需求人力（Off Line）               各月輸入，有「同步首月」按鈕（版本 14 起；以前是 =現有人力（Off Line））
- *     現有操機人員、現有目檢人員         第 6 步確認的「操機」「目檢」那一列 × 一般鍍膜、＿＿鍍膜兩行加總，例如 =SUM('人力'!D5,'人力'!E5)
+ *     現有操機人員、現有目檢人員         第 6 步確認的「操機」「目檢」那一列 × 一般鍍膜、＿＿鍍膜兩行加總，例如 =SUM(R5,S5)
  *     MPS GMO、Plastic   公式：參照 MPS 工作表該段（GMO = 第 1 步的 Glass 段）第 2 步的 Total 列，例如 ='MPS'!E10；
  *                        沒有 Total 列就直接加總該段（當月也不加 WIP）
  *     GMO 站、Plastic 站
@@ -586,13 +586,14 @@
       els.notes.appendChild(h('li', { class: 'is-warn' }, '找不到第 6 步確認的位置（on line、off line 的列，一般鍍膜、＿＿鍍膜的行），現有人力先留空白。請回到第 6 步確認一次。'));
     } else {
       var mc = [mpos.generalCol, mpos.otherCol];
-      els.notes.appendChild(h('li', null, '現有人力（公式）：On Line =SUM(' + MP_SHEET + ' ' + rangeText(mpos.onlineRows, mc) + ')、Off Line =SUM(' +
-        MP_SHEET + ' ' + rangeText(mpos.offlineRows, mc) + ')。'));
+      els.notes.appendChild(h('li', null, '「' + MP_SHEET + '」工作表會整張搬進總表，從 ' + XIO.numToCol(R.mpCol) + ' 行開始放（列號不變），匯出的檔案不再有「' + MP_SHEET + '」工作表；總表排在第一個工作表。'));
+      els.notes.appendChild(h('li', null, '現有人力（公式）：On Line =SUM(' + rangeText(mpos.onlineRows, mc.map(mpShift)) + ')、Off Line =SUM(' +
+        rangeText(mpos.offlineRows, mc.map(mpShift)) + ')。'));
       [['現有操機人員', '操機'], ['現有目檢人員', '目檢']].forEach(function (p) {
         var r = categoryRow(mpos, p[1]);
         if (r) {
-          els.notes.appendChild(h('li', null, p[0] + '（公式）：=SUM(' + MP_SHEET + ' ' +
-            mc.filter(Boolean).map(function (c) { return XIO.numToCol(c) + r; }).join('、') + ')（第 6 步「' + p[1] + '」在第 ' + r + ' 列）。'));
+          els.notes.appendChild(h('li', null, p[0] + '（公式）：=SUM(' +
+            mc.filter(Boolean).map(function (c) { return XIO.numToCol(mpShift(c)) + r; }).join('、') + ')（第 6 步「' + p[1] + '」在第 ' + r + ' 列）。'));
         } else {
           els.notes.appendChild(h('li', { class: 'is-warn' }, '第 6 步的類別項目裡找不到「' + p[1] + '」，' + p[0] + '先留空白。請回到第 6 步確認類別項目。'));
         }
@@ -666,6 +667,8 @@
   /* ---------- 產生活頁簿 ---------- */
   /* ---------- 現有人力：第 6 步確認的位置 ---------- */
   var MP_SHEET = '人力';
+  // 人力報表第 c 行搬進總表後是第幾行（人力報表的 A 行放在總表的 O 行）；0 維持 0
+  function mpShift(c) { return c ? c + R.mpCol - 1 : 0; }
   // 沿用第 6 步剛做好的結果時用它確認的位置；上傳第 6 步的檔案時用第 6 步記住的位置
   function manpowerPos(src) {
     var m = src.kind === 'prev' && src.prev.manpower ? src.prev.manpower : null;
